@@ -480,13 +480,22 @@ class AgentHistoryAnalyzer:
             margin: 10px 0;
             align-items: flex-start;
         }
-        .time-column {
-            min-width: 60px;
+.time-column {
+            min-width: 80px;
             padding-right: 15px;
             text-align: right;
             font-family: 'Courier New', monospace;
             font-size: 0.85em;
             padding-top: 15px;
+        }
+        .duration-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9em;
         }
         .duration-badge {
             display: inline-block;
@@ -624,8 +633,8 @@ class AgentHistoryAnalyzer:
                 <div class="stat-label">上下文压缩次数</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">{stats["avg_request_time"]:.2f}s</div>
-                <div class="stat-label">平均耗时</div>
+                <div class="stat-value">{stats["total_time"]:.2f}s</div>
+                <div class="stat-label">总耗时</div>
             </div>
         </div>"""
 
@@ -711,15 +720,10 @@ class AgentHistoryAnalyzer:
                 </div>
             </div>""")
 
-        # 按照execution_flow的顺序生成内容，并计算累计耗时
-        cumulative_time = 0.0
-
         for flow_item in request.get("execution_flow", []):
             if flow_item["type"] == "reasoning":
-                # 推理片段
                 duration = flow_item.get("duration", 0)
-                cumulative_time += duration
-                time_html = self._format_time_display(duration, cumulative_time)
+                time_html = self._format_time_display(duration)
 
                 details.append(f"""<div class="flow-item">
                     <div class="time-column">{time_html}</div>
@@ -735,10 +739,9 @@ class AgentHistoryAnalyzer:
                 arguments = flow_item.get("arguments", "{}")
                 timestamp_str = datetime.fromtimestamp(flow_item["timestamp"]).strftime("%H:%M:%S")
                 duration = flow_item.get("duration", 0)
-                cumulative_time += duration
                 result_content = flow_item.get("result", "")
 
-                time_html = self._format_time_display(duration, cumulative_time)
+                time_html = self._format_time_display(duration)
 
                 params_html = self._format_tool_params(tool_name, arguments)
 
@@ -767,18 +770,24 @@ class AgentHistoryAnalyzer:
                 </div>""")
             elif flow_item["type"] == "compression":
                 timestamp_str = datetime.fromtimestamp(flow_item["timestamp"]).strftime("%H:%M:%S")
-                duration = flow_item.get("duration", 0)
-                if duration == 0 and request.get("execution_flow"):
-                    for i, item in enumerate(request["execution_flow"]):
-                        if item == flow_item and i > 0:
-                            prev_item = request["execution_flow"][i - 1]
-                            if prev_item["type"] == "tool_call":
-                                duration = prev_item.get("duration", 0)
-                            elif prev_item["type"] == "reasoning":
-                                duration = prev_item.get("duration", 0)
-                            break
-                cumulative_time += duration
-                time_html = self._format_time_display(duration, cumulative_time)
+                compression_timestamp = flow_item["timestamp"]
+
+                prev_end_time = request["start_time"]
+                for i, item in enumerate(request["execution_flow"]):
+                    if item == flow_item and i > 0:
+                        prev_item = request["execution_flow"][i - 1]
+                        if prev_item["type"] == "tool_call":
+                            prev_end_time = prev_item["timestamp"] + prev_item.get("duration", 0)
+                        elif prev_item["type"] == "reasoning":
+                            prev_end_time = prev_item.get("end_timestamp", prev_item["timestamp"])
+                        elif prev_item["type"] == "assistant_response":
+                            prev_end_time = prev_item.get("end_timestamp", prev_item["timestamp"])
+                        elif prev_item["type"] == "compression":
+                            prev_end_time = prev_item["timestamp"]
+                        break
+
+                duration = compression_timestamp - prev_end_time
+                time_html = self._format_time_display(duration)
 
                 details.append(f"""<div class="flow-item">
                     <div class="time-column">{time_html}</div>
@@ -797,10 +806,8 @@ class AgentHistoryAnalyzer:
                     </div>
                 </div>""")
             elif flow_item["type"] == "assistant_response":
-                # 助手回复
                 duration = flow_item.get("duration", 0)
-                cumulative_time += duration
-                time_html = self._format_time_display(duration, cumulative_time)
+                time_html = self._format_time_display(duration)
 
                 details.append(f"""<div class="flow-item">
                     <div class="time-column">{time_html}</div>
@@ -814,13 +821,10 @@ class AgentHistoryAnalyzer:
 
         return "\n".join(details)
 
-    def _format_time_display(self, duration: float, cumulative: float) -> str:
-        """格式化时间显示，包含单个耗时和累计耗时"""
+    def _format_time_display(self, duration: float) -> str:
+        """格式化时间显示"""
         duration_str = f"{duration:.2f}s" if duration > 0 else "-"
-        cumulative_str = f"{cumulative:.2f}s"
-
-        return f"""<div><span class="duration-badge">{duration_str}</span></div>
-            <div><span class="cumulative-time">{cumulative_str}</span></div>"""
+        return f"<span class='duration-badge'>{duration_str}</span>"
 
     def _format_tool_params(self, tool_name: str, arguments: str) -> str:
         """格式化工具参数，特别处理execute_python_code的code_block"""
