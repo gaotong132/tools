@@ -77,9 +77,9 @@ class AgentHistoryAnalyzer:
                     "events": [],
                     "user_input": "",
                     "assistant_response": "",
+                    "execution_flow": [],  # 按时间顺序记录推理和工具调用
                     "tool_calls": [],
                     "tool_results": [],
-                    "reasoning_text": "",
                     "compression": None,
                     "duration": 0,
                 }
@@ -128,7 +128,22 @@ class AgentHistoryAnalyzer:
             payload = event.get("event_payload", {})
             source_type = payload.get("source_chunk_type", "")
             if source_type == "llm_reasoning":
-                request_data["reasoning_text"] += content
+                # 检查是否需要创建新的推理片段或追加到现有片段
+                if (
+                    request_data["execution_flow"]
+                    and request_data["execution_flow"][-1]["type"] == "reasoning"
+                ):
+                    # 追加到最后一个推理片段
+                    request_data["execution_flow"][-1]["content"] += content
+                else:
+                    # 创建新的推理片段
+                    request_data["execution_flow"].append(
+                        {
+                            "type": "reasoning",
+                            "content": content,
+                            "timestamp": timestamp,
+                        }
+                    )
 
         elif event_type == "chat.final":
             payload = event.get("event_payload", {})
@@ -140,16 +155,28 @@ class AgentHistoryAnalyzer:
         elif event_type == "chat.tool_call":
             payload = event.get("event_payload", {})
             tool_call = payload.get("tool_call", {})
-            request_data["tool_calls"].append(
+            tool_call_data = {
+                "name": tool_call.get("name"),
+                "arguments": tool_call.get("arguments"),
+                "tool_call_id": tool_call.get("tool_call_id"),
+                "timestamp": timestamp,
+                "start_time": timestamp,
+                "duration": 0,
+            }
+            request_data["tool_calls"].append(tool_call_data)
+
+            # 添加到执行流程
+            request_data["execution_flow"].append(
                 {
+                    "type": "tool_call",
+                    "tool_call_id": tool_call.get("tool_call_id"),
                     "name": tool_call.get("name"),
                     "arguments": tool_call.get("arguments"),
-                    "tool_call_id": tool_call.get("tool_call_id"),
                     "timestamp": timestamp,
-                    "start_time": timestamp,
                     "duration": 0,
                 }
             )
+
             result["statistics"]["tool_calls"] += 1
             tool_name = tool_call.get("name")
             if tool_name:
@@ -159,24 +186,32 @@ class AgentHistoryAnalyzer:
             payload = event.get("event_payload", {})
             tool_call_id = payload.get("tool_call_id")
             tool_name = payload.get("tool_name")
+            result_content = payload.get("result")
 
             # 找到对应的tool_call并计算耗时
+            duration = 0
             for tool_call in request_data["tool_calls"]:
                 if tool_call["tool_call_id"] == tool_call_id:
-                    tool_call["duration"] = timestamp - tool_call["start_time"]
+                    duration = timestamp - tool_call["start_time"]
+                    tool_call["duration"] = duration
 
                     # 更新tool_usage的耗时统计
                     if tool_name and tool_name in result["tool_usage"]:
-                        result["tool_usage"][tool_name]["total_time"] += tool_call[
-                            "duration"
-                        ]
+                        result["tool_usage"][tool_name]["total_time"] += duration
+                    break
+
+            # 更新execution_flow中的工具调用
+            for flow_item in request_data["execution_flow"]:
+                if flow_item["type"] == "tool_call" and flow_item["tool_call_id"] == tool_call_id:
+                    flow_item["duration"] = duration
+                    flow_item["result"] = result_content
                     break
 
             request_data["tool_results"].append(
                 {
                     "tool_name": payload.get("tool_name"),
                     "tool_call_id": payload.get("tool_call_id"),
-                    "result": payload.get("result"),
+                    "result": result_content,
                     "timestamp": timestamp,
                 }
             )
@@ -526,17 +561,46 @@ class AgentHistoryAnalyzer:
                 <div class="message-content">{self._escape_html(request["user_input"])}</div>
             </div>""")
 
-        if request["reasoning_text"]:
-            details.append(f"""<div class="message-box assistant-message">
-                <div class="message-label"><span class="badge badge-green">推理过程</span></div>
-                <div class="message-content">{self._escape_html(request["reasoning_text"])}</div>
-            </div>""")
+        # 按照execution_flow的顺序生成内容
+        for flow_item in request.get("execution_flow", []):
+            if flow_item["type"] == "reasoning":
+                # 推理片段
+                details.append(f"""<div class="message-box assistant-message">
+                    <div class="message-label"><span class="badge badge-green">推理过程</span></div>
+                    <div class="message-content">{self._escape_html(flow_item["content"])}</div>
+                </div>""")
+            elif flow_item["type"] == "tool_call":
+                # 工具调用
+                tool_name = flow_item.get("name", "unknown")
+                arguments = flow_item.get("arguments", "{}")
+                timestamp_str = datetime.fromtimestamp(flow_item["timestamp"]).strftime("%H:%M:%S")
+                duration = flow_item.get("duration", 0)
+                result_content = flow_item.get("result", "")
 
-        if request["tool_calls"]:
-            tool_call_html = self._generate_tool_calls_html(
-                request["tool_calls"], request["tool_results"]
-            )
-            details.append(tool_call_html)
+                duration_str = (
+                    f"<span style='color: #999; font-size: 0.85em;'>(耗时: {duration:.2f}s)</span>"
+                    if duration > 0
+                    else ""
+                )
+
+                result_html = ""
+                if result_content:
+                    result_html = f"""<div class="collapsible-content">
+                        <pre style="white-space: pre-wrap; word-wrap: break-word;">{self._escape_html(result_content)}</pre>
+                    </div>"""
+
+                details.append(f"""<div class="message-box tool-call">
+                    <div class="message-label">
+                        <span class="badge badge-orange">工具调用: {tool_name}</span>
+                        <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
+                        {duration_str}
+                    </div>
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <div><strong>参数:</strong> {self._escape_html(arguments)}</div>
+                        <span class="arrow">▼</span>
+                    </div>
+                    {result_html}
+                </div>""")
 
         if request["assistant_response"]:
             details.append(f"""<div class="message-box assistant-message">
@@ -555,43 +619,6 @@ class AgentHistoryAnalyzer:
             </div>""")
 
         return "\n".join(details)
-
-    def _generate_tool_calls_html(self, tool_calls: List, tool_results: List) -> str:
-        html_parts = []
-
-        for tool_call in tool_calls:
-            result = None
-            for tr in tool_results:
-                if tr["tool_call_id"] == tool_call["tool_call_id"]:
-                    result = tr
-                    break
-
-            tool_name = tool_call.get("name", "unknown")
-            arguments = tool_call.get("arguments", "{}")
-            timestamp_str = datetime.fromtimestamp(tool_call["timestamp"]).strftime(
-                "%H:%M:%S"
-            )
-
-            result_html = ""
-            if result:
-                result_content = result.get("result", "")
-                result_html = f"""<div class="collapsible-content">
-                    <pre style="white-space: pre-wrap; word-wrap: break-word;">{self._escape_html(result_content)}</pre>
-                </div>"""
-
-            html_parts.append(f"""<div class="message-box tool-call">
-                <div class="message-label">
-                    <span class="badge badge-orange">工具调用: {tool_name}</span>
-                    <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
-                </div>
-                <div class="collapsible-header" onclick="toggleCollapsible(this)">
-                    <div><strong>参数:</strong> {self._escape_html(arguments)}</div>
-                    <span class="arrow">▼</span>
-                </div>
-                {result_html}
-            </div>""")
-
-        return "\n".join(html_parts)
 
     def _get_metadata_section(self, result: Dict) -> str:
         stats = result["statistics"]
@@ -674,9 +701,7 @@ class AgentHistoryAnalyzer:
             count = tool_stats["count"]
             total_time = tool_stats["total_time"]
             avg_time = total_time / count if count > 0 else 0
-            print(
-                f"  - {tool_name}: {count} 次 (平均: {avg_time:.2f}s, 总计: {total_time:.2f}s)"
-            )
+            print(f"  - {tool_name}: {count} 次 (平均: {avg_time:.2f}s, 总计: {total_time:.2f}s)")
         print("=" * 40)
 
 
@@ -701,9 +726,7 @@ def main():
         help="输出报告文件路径 (默认: report.html)",
     )
 
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="在终端显示摘要信息"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="在终端显示摘要信息")
 
     args = parser.parse_args()
 

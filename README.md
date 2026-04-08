@@ -26,7 +26,49 @@ tools/
 ├── venv/              # 虚拟环境
 ├── tools/             # 工具脚本目录
 ├── requirements.txt   # 依赖列表
+├── pyproject.toml     # 项目配置（构建、LSP、工具配置）
+├── LSP_SETUP.md       # LSP 配置详细说明
 └── README.md          # 项目说明
+```
+
+## 开发环境配置
+
+### LSP (Language Server Protocol) 支持
+
+本项目已配置 LSP 支持，可在编辑器中获得智能提示、代码补全、类型检查等功能。
+
+**支持的 LSP 服务器：**
+- **Pyright** (推荐) - 用于 VS Code + Pylance
+- **PyLSP** - 用于 Vim/Neovim、Emacs 等编辑器
+
+**配置文件：** `pyproject.toml`
+
+**快速配置（VS Code）：**
+1. 安装 Python 和 Pylance 扩展
+2. 选择虚拟环境：`Ctrl+Shift+P` → "Python: Select Interpreter" → 选择 `./venv/Scripts/python.exe`
+3. LSP 会自动读取 `pyproject.toml` 配置
+
+**详细配置文档：** 参见 [LSP_SETUP.md](LSP_SETUP.md)
+
+### 开发工具
+
+项目已配置以下工具：
+
+```bash
+# 安装开发依赖
+pip install -e .[dev]
+
+# 代码格式化
+black tools/
+
+# Lint 检查
+ruff check tools/
+
+# 类型检查
+mypy tools/
+
+# 运行测试
+pytest
 ```
 
 ## 工具列表
