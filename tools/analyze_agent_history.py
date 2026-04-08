@@ -55,6 +55,7 @@ class AgentHistoryAnalyzer:
             "tool_usage": defaultdict(lambda: {"count": 0, "total_time": 0.0}),
             "compression_events": [],
             "timeline": [],
+            "top_duration_steps": [],
         }
 
         current_request_id = None
@@ -279,6 +280,61 @@ class AgentHistoryAnalyzer:
                 total_time / result["statistics"]["total_requests"]
             )
 
+        all_steps = []
+        for request in result["timeline"]:
+            request_id = request.get("request_id", "")
+            user_input = request.get("user_input", "")
+            for flow_item in request.get("execution_flow", []):
+                if flow_item["type"] == "reasoning":
+                    duration = flow_item.get("duration", 0)
+                    content = flow_item.get("content", "")[:100]
+                    all_steps.append(
+                        {
+                            "request_id": request_id,
+                            "type": "推理",
+                            "duration": duration,
+                            "summary": f"推理: {content}..."
+                            if len(flow_item.get("content", "")) > 100
+                            else f"推理: {flow_item.get('content', '')}",
+                            "user_input": user_input[:50] + "..."
+                            if len(user_input) > 50
+                            else user_input,
+                        }
+                    )
+                elif flow_item["type"] == "tool_call":
+                    tool_name = flow_item.get("name", "unknown")
+                    duration = flow_item.get("duration", 0)
+                    all_steps.append(
+                        {
+                            "request_id": request_id,
+                            "type": "工具调用",
+                            "duration": duration,
+                            "summary": f"工具: {tool_name}",
+                            "user_input": user_input[:50] + "..."
+                            if len(user_input) > 50
+                            else user_input,
+                        }
+                    )
+                elif flow_item["type"] == "assistant_response":
+                    duration = flow_item.get("duration", 0)
+                    content = flow_item.get("content", "")[:100]
+                    all_steps.append(
+                        {
+                            "request_id": request_id,
+                            "type": "助手回复",
+                            "duration": duration,
+                            "summary": f"回复: {content}..."
+                            if len(flow_item.get("content", "")) > 100
+                            else f"回复: {flow_item.get('content', '')}",
+                            "user_input": user_input[:50] + "..."
+                            if len(user_input) > 50
+                            else user_input,
+                        }
+                    )
+
+        all_steps.sort(key=lambda x: x["duration"], reverse=True)
+        result["top_duration_steps"] = all_steps[:20]
+
     def generate_html_report(self, output_path: str = "report.html"):
         if not self.analysis_result:
             print("错误: 没有分析数据")
@@ -303,7 +359,7 @@ class AgentHistoryAnalyzer:
         html += self._get_header_section()
         html += self._get_stats_section(stats)
         html += self._get_timeline_section(timeline)
-        html += self._get_tool_table_section(tool_usage)
+        html += self._get_top_duration_section(self.analysis_result.get("top_duration_steps", []))
         html += self._get_metadata_section(self.analysis_result)
         html += self._get_html_body_end()
         html += self._get_js_section()
@@ -573,29 +629,36 @@ class AgentHistoryAnalyzer:
             </div>
         </div>"""
 
-    def _get_tool_table_section(self, tool_usage: Dict) -> str:
+    def _get_top_duration_section(self, top_steps: List) -> str:
+        if not top_steps:
+            return ""
+
         rows = []
-        for tool_name, stats in tool_usage.items():
-            count = stats["count"]
-            total_time = stats["total_time"]
-            avg_time = total_time / count if count > 0 else 0
-            rows.append(
-                f"<tr><td><span class='badge badge-orange'>{tool_name}</span></td>"
-                f"<td>{count}</td>"
-                f"<td>{avg_time:.2f}s</td>"
-                f"<td>{total_time:.2f}s</td></tr>"
+        for i, step in enumerate(top_steps, 1):
+            badge_class = (
+                "badge-red"
+                if step["duration"] > 5
+                else ("badge-orange" if step["duration"] > 2 else "badge-blue")
             )
+            rows.append(f"""<tr>
+                <td><strong>#{i}</strong></td>
+                <td><span class='badge {badge_class}'>{step["duration"]:.2f}s</span></td>
+                <td><span class='badge badge-green'>{step["type"]}</span></td>
+                <td>{self._escape_html(step["summary"])}</td>
+                <td style="font-size: 0.85em; color: #666;">{self._escape_html(step["user_input"])}</td>
+            </tr>""")
 
         return f"""
         <div class="section">
-            <h2 class="section-title">工具调用详情</h2>
+            <h2 class="section-title">⏱️ 耗时排行榜 (Top 20)</h2>
             <table class="tool-table">
                 <thead>
                     <tr>
-                        <th>工具名称</th>
-                        <th>调用次数</th>
-                        <th>平均耗时</th>
-                        <th>总耗时</th>
+                        <th style="width: 50px;">排名</th>
+                        <th style="width: 100px;">耗时</th>
+                        <th style="width: 100px;">类型</th>
+                        <th>摘要</th>
+                        <th>用户输入</th>
                     </tr>
                 </thead>
                 <tbody>
