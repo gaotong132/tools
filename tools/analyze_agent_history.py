@@ -80,7 +80,6 @@ class AgentHistoryAnalyzer:
                     "execution_flow": [],  # 按时间顺序记录推理和工具调用
                     "tool_calls": [],
                     "tool_results": [],
-                    "compression": None,
                     "duration": 0,
                 }
 
@@ -107,12 +106,18 @@ class AgentHistoryAnalyzer:
 
         elif event_type == "context.compressed":
             payload = event.get("event_payload", {})
-            request_data["compression"] = {
+            compression_data = {
                 "timestamp": timestamp,
                 "before": payload.get("before_compressed", 0),
                 "after": payload.get("after_compressed", 0),
                 "rate": payload.get("rate", 0),
             }
+
+            # 存储压缩事件
+            if not request_data.get("compressions"):
+                request_data["compressions"] = []
+            request_data["compressions"].append(compression_data)
+
             result["compression_events"].append(
                 {
                     "request_id": request_data["request_id"],
@@ -124,6 +129,17 @@ class AgentHistoryAnalyzer:
             )
             result["statistics"]["context_compressed"] += 1
 
+            # 添加到执行流程
+            request_data["execution_flow"].append(
+                {
+                    "type": "compression",
+                    "timestamp": timestamp,
+                    "before": payload.get("before_compressed", 0),
+                    "after": payload.get("after_compressed", 0),
+                    "rate": payload.get("rate", 0),
+                }
+            )
+
         elif event_type == "chat.delta":
             payload = event.get("event_payload", {})
             source_type = payload.get("source_chunk_type", "")
@@ -133,8 +149,9 @@ class AgentHistoryAnalyzer:
                     request_data["execution_flow"]
                     and request_data["execution_flow"][-1]["type"] == "reasoning"
                 ):
-                    # 追加到最后一个推理片段
+                    # 追加到最后一个推理片段，更新结束时间
                     request_data["execution_flow"][-1]["content"] += content
+                    request_data["execution_flow"][-1]["end_timestamp"] = timestamp
                 else:
                     # 创建新的推理片段
                     request_data["execution_flow"].append(
@@ -142,6 +159,9 @@ class AgentHistoryAnalyzer:
                             "type": "reasoning",
                             "content": content,
                             "timestamp": timestamp,
+                            "start_timestamp": timestamp,
+                            "end_timestamp": timestamp,
+                            "duration": 0,
                         }
                     )
 
@@ -151,6 +171,29 @@ class AgentHistoryAnalyzer:
             if source_type == "answer":
                 request_data["assistant_response"] = content
                 result["statistics"]["assistant_messages"] += 1
+
+                # 添加助手回复到execution_flow
+                # 获取上一个事件的结束时间作为助手回复的开始时间
+                start_timestamp = request_data["start_time"]
+                if request_data["execution_flow"]:
+                    last_item = request_data["execution_flow"][-1]
+                    if last_item["type"] == "tool_call":
+                        start_timestamp = last_item["timestamp"] + last_item.get("duration", 0)
+                    elif last_item["type"] == "reasoning":
+                        start_timestamp = last_item.get("end_timestamp", timestamp)
+                    elif last_item["type"] == "compression":
+                        start_timestamp = last_item["timestamp"]
+
+                request_data["execution_flow"].append(
+                    {
+                        "type": "assistant_response",
+                        "content": content,
+                        "timestamp": timestamp,
+                        "start_timestamp": start_timestamp,
+                        "end_timestamp": timestamp,
+                        "duration": timestamp - start_timestamp,
+                    }
+                )
 
         elif event_type == "chat.tool_call":
             payload = event.get("event_payload", {})
@@ -218,6 +261,12 @@ class AgentHistoryAnalyzer:
 
     def _finalize_request(self, request_data: Dict, result: Dict):
         request_data["duration"] = request_data["end_time"] - request_data["start_time"]
+
+        # 计算所有推理片段的耗时
+        for flow_item in request_data.get("execution_flow", []):
+            if flow_item["type"] == "reasoning":
+                flow_item["duration"] = flow_item["end_timestamp"] - flow_item["start_timestamp"]
+
         result["requests"][request_data["request_id"]] = request_data
         result["timeline"].append(request_data)
         result["statistics"]["total_requests"] += 1
@@ -285,36 +334,36 @@ class AgentHistoryAnalyzer:
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 40px 20px;
+            padding: 20px 15px;
             text-align: center;
-            border-radius: 10px;
-            margin-bottom: 30px;
+            border-radius: 8px;
+            margin-bottom: 20px;
         }
-        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
-        .header p { font-size: 1.1em; opacity: 0.9; }
+        .header h1 { font-size: 1.8em; margin-bottom: 5px; }
+        .header p { font-size: 0.85em; opacity: 0.9; }
         
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
         }
         .stat-card {
             background: white;
-            border-radius: 10px;
-            padding: 20px;
+            border-radius: 8px;
+            padding: 12px;
             text-align: center;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             transition: transform 0.2s;
         }
-        .stat-card:hover { transform: translateY(-5px); }
+        .stat-card:hover { transform: translateY(-3px); }
         .stat-value {
-            font-size: 2.5em;
+            font-size: 1.8em;
             font-weight: bold;
             color: #667eea;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
         }
-        .stat-label { font-size: 1em; color: #666; }
+        .stat-label { font-size: 0.85em; color: #666; }
         
         .section {
             background: white;
@@ -360,7 +409,6 @@ class AgentHistoryAnalyzer:
         }
         .request-header:hover { background: #e9ecef; }
         .request-id { font-weight: bold; color: #667eea; }
-        .request-duration { color: #666; }
         
         .request-details {
             display: none;
@@ -371,12 +419,46 @@ class AgentHistoryAnalyzer:
         }
         .request-details.active { display: block; }
         
+        .flow-item {
+            display: flex;
+            margin: 10px 0;
+            align-items: flex-start;
+        }
+        .time-column {
+            min-width: 60px;
+            padding-right: 15px;
+            text-align: right;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            padding-top: 15px;
+        }
+        .duration-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .cumulative-time {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            margin-top: 3px;
+        }
+        .content-column {
+            flex: 1;
+        }
+        
         .message-box {
             background: white;
             border: 1px solid #e0e0e0;
             border-radius: 8px;
             padding: 15px;
-            margin: 10px 0;
         }
         .user-message { border-left: 4px solid #2196F3; }
         .assistant-message { border-left: 4px solid #4CAF50; }
@@ -535,9 +617,9 @@ class AgentHistoryAnalyzer:
                     <div>
                         <span class="request-id">#{i} - {request["request_id"]}</span>
                         <span class="badge badge-blue">{timestamp_str}</span>
+                        <span class="badge badge-green" style="margin-left: 10px;">总耗时: {request["duration"]:.2f}s</span>
                     </div>
                     <div>
-                        <span class="request-duration">耗时: {request["duration"]:.2f}秒</span>
                         <span class="arrow">▼</span>
                     </div>
                 </div>
@@ -556,69 +638,143 @@ class AgentHistoryAnalyzer:
         details = []
 
         if request["user_input"]:
-            details.append(f"""<div class="message-box user-message">
-                <div class="message-label"><span class="badge badge-blue">用户输入</span></div>
-                <div class="message-content">{self._escape_html(request["user_input"])}</div>
+            details.append(f"""<div class="flow-item">
+                <div class="time-column"></div>
+                <div class="content-column">
+                    <div class="message-box user-message">
+                        <div class="message-label"><span class="badge badge-blue">用户输入</span></div>
+                        <div class="message-content">{self._escape_html(request["user_input"])}</div>
+                    </div>
+                </div>
             </div>""")
 
-        # 按照execution_flow的顺序生成内容
+        # 按照execution_flow的顺序生成内容，并计算累计耗时
+        cumulative_time = 0.0
+
         for flow_item in request.get("execution_flow", []):
             if flow_item["type"] == "reasoning":
                 # 推理片段
-                details.append(f"""<div class="message-box assistant-message">
-                    <div class="message-label"><span class="badge badge-green">推理过程</span></div>
-                    <div class="message-content">{self._escape_html(flow_item["content"])}</div>
+                duration = flow_item.get("duration", 0)
+                cumulative_time += duration
+                time_html = self._format_time_display(duration, cumulative_time)
+
+                details.append(f"""<div class="flow-item">
+                    <div class="time-column">{time_html}</div>
+                    <div class="content-column">
+                        <div class="message-box assistant-message">
+                            <div class="message-label"><span class="badge badge-green">推理过程</span></div>
+                            <div class="message-content">{self._escape_html(flow_item["content"])}</div>
+                        </div>
+                    </div>
                 </div>""")
             elif flow_item["type"] == "tool_call":
-                # 工具调用
                 tool_name = flow_item.get("name", "unknown")
                 arguments = flow_item.get("arguments", "{}")
                 timestamp_str = datetime.fromtimestamp(flow_item["timestamp"]).strftime("%H:%M:%S")
                 duration = flow_item.get("duration", 0)
+                cumulative_time += duration
                 result_content = flow_item.get("result", "")
 
-                duration_str = (
-                    f"<span style='color: #999; font-size: 0.85em;'>(耗时: {duration:.2f}s)</span>"
-                    if duration > 0
-                    else ""
-                )
+                time_html = self._format_time_display(duration, cumulative_time)
+
+                params_html = self._format_tool_params(tool_name, arguments)
 
                 result_html = ""
                 if result_content:
-                    result_html = f"""<div class="collapsible-content">
-                        <pre style="white-space: pre-wrap; word-wrap: break-word;">{self._escape_html(result_content)}</pre>
+                    result_html = f"""<div style="margin-top: 10px;">
+                        <div class="message-label"><strong>结果:</strong></div>
+                        <pre style="white-space: pre-wrap; word-wrap: break-word; background: #f5f5f5; padding: 8px; border-radius: 4px; font-size: 0.85em;">{self._escape_html(result_content)}</pre>
                     </div>"""
 
-                details.append(f"""<div class="message-box tool-call">
-                    <div class="message-label">
-                        <span class="badge badge-orange">工具调用: {tool_name}</span>
-                        <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
-                        {duration_str}
+                details.append(f"""<div class="flow-item">
+                    <div class="time-column">{time_html}</div>
+                    <div class="content-column">
+                        <div class="message-box tool-call">
+                            <div class="message-label">
+                                <span class="badge badge-orange">工具调用: {tool_name}</span>
+                                <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <div class="message-label"><strong>参数:</strong></div>
+                                {params_html}
+                            </div>
+                            {result_html}
+                        </div>
                     </div>
-                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
-                        <div><strong>参数:</strong> {self._escape_html(arguments)}</div>
-                        <span class="arrow">▼</span>
+                </div>""")
+            elif flow_item["type"] == "compression":
+                timestamp_str = datetime.fromtimestamp(flow_item["timestamp"]).strftime("%H:%M:%S")
+                duration = flow_item.get("duration", 0)
+                if duration == 0 and request.get("execution_flow"):
+                    for i, item in enumerate(request["execution_flow"]):
+                        if item == flow_item and i > 0:
+                            prev_item = request["execution_flow"][i - 1]
+                            if prev_item["type"] == "tool_call":
+                                duration = prev_item.get("duration", 0)
+                            elif prev_item["type"] == "reasoning":
+                                duration = prev_item.get("duration", 0)
+                            break
+                cumulative_time += duration
+                time_html = self._format_time_display(duration, cumulative_time)
+
+                details.append(f"""<div class="flow-item">
+                    <div class="time-column">{time_html}</div>
+                    <div class="content-column">
+                        <div class="message-box compression">
+                            <div class="message-label">
+                                <span class="badge badge-red">上下文压缩</span>
+                                <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
+                            </div>
+                            <div class="message-content">
+                                <div>压缩前: {flow_item["before"]} tokens</div>
+                                <div>压缩后: {flow_item["after"]} tokens</div>
+                                <div>压缩率: {flow_item["rate"] / 100:.1%}</div>
+                            </div>
+                        </div>
                     </div>
-                    {result_html}
+                </div>""")
+            elif flow_item["type"] == "assistant_response":
+                # 助手回复
+                duration = flow_item.get("duration", 0)
+                cumulative_time += duration
+                time_html = self._format_time_display(duration, cumulative_time)
+
+                details.append(f"""<div class="flow-item">
+                    <div class="time-column">{time_html}</div>
+                    <div class="content-column">
+                        <div class="message-box assistant-message">
+                            <div class="message-label"><span class="badge badge-green">助手回复</span></div>
+                            <div class="message-content">{self._escape_html(flow_item["content"])}</div>
+                        </div>
+                    </div>
                 </div>""")
 
-        if request["assistant_response"]:
-            details.append(f"""<div class="message-box assistant-message">
-                <div class="message-label"><span class="badge badge-green">助手回复</span></div>
-                <div class="message-content">{self._escape_html(request["assistant_response"])}</div>
-            </div>""")
-
-        if request["compression"]:
-            details.append(f"""<div class="message-box compression">
-                <div class="message-label"><span class="badge badge-red">上下文压缩</span></div>
-                <div class="message-content">
-                    压缩前: {request["compression"]["before"]} tokens → 
-                    压缩后: {request["compression"]["after"]} tokens 
-                    (压缩率: {request["compression"]["rate"] / 100:.1%})
-                </div>
-            </div>""")
-
         return "\n".join(details)
+
+    def _format_time_display(self, duration: float, cumulative: float) -> str:
+        """格式化时间显示，包含单个耗时和累计耗时"""
+        duration_str = f"{duration:.2f}s" if duration > 0 else "-"
+        cumulative_str = f"{cumulative:.2f}s"
+
+        return f"""<div><span class="duration-badge">{duration_str}</span></div>
+            <div><span class="cumulative-time">{cumulative_str}</span></div>"""
+
+    def _format_tool_params(self, tool_name: str, arguments: str) -> str:
+        """格式化工具参数，特别处理execute_python_code的code_block"""
+        try:
+            params = json.loads(arguments)
+        except (json.JSONDecodeError, TypeError):
+            return f"<pre>{self._escape_html(arguments)}</pre>"
+
+        # 特殊处理execute_python_code
+        if tool_name == "execute_python_code" and "code_block" in params:
+            code = params["code_block"]
+            # 使用代码块格式化
+            return f"""<pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 0.9em;"><code>{self._escape_html(code)}</code></pre>"""
+
+        # 其他工具参数，格式化JSON展示
+        formatted_json = json.dumps(params, indent=2, ensure_ascii=False)
+        return f"<pre style='background: #f5f5f5; padding: 8px; border-radius: 4px; font-size: 0.85em;'>{self._escape_html(formatted_json)}</pre>"
 
     def _get_metadata_section(self, result: Dict) -> str:
         stats = result["statistics"]
