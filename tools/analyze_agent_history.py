@@ -52,7 +52,7 @@ class AgentHistoryAnalyzer:
                 "total_time": 0,
                 "avg_request_time": 0,
             },
-            "tool_usage": defaultdict(int),
+            "tool_usage": defaultdict(lambda: {"count": 0, "total_time": 0.0}),
             "compression_events": [],
             "timeline": [],
         }
@@ -146,15 +146,32 @@ class AgentHistoryAnalyzer:
                     "arguments": tool_call.get("arguments"),
                     "tool_call_id": tool_call.get("tool_call_id"),
                     "timestamp": timestamp,
+                    "start_time": timestamp,
+                    "duration": 0,
                 }
             )
             result["statistics"]["tool_calls"] += 1
             tool_name = tool_call.get("name")
             if tool_name:
-                result["tool_usage"][tool_name] += 1
+                result["tool_usage"][tool_name]["count"] += 1
 
         elif event_type == "chat.tool_result":
             payload = event.get("event_payload", {})
+            tool_call_id = payload.get("tool_call_id")
+            tool_name = payload.get("tool_name")
+
+            # 找到对应的tool_call并计算耗时
+            for tool_call in request_data["tool_calls"]:
+                if tool_call["tool_call_id"] == tool_call_id:
+                    tool_call["duration"] = timestamp - tool_call["start_time"]
+
+                    # 更新tool_usage的耗时统计
+                    if tool_name and tool_name in result["tool_usage"]:
+                        result["tool_usage"][tool_name]["total_time"] += tool_call[
+                            "duration"
+                        ]
+                    break
+
             request_data["tool_results"].append(
                 {
                     "tool_name": payload.get("tool_name"),
@@ -194,26 +211,18 @@ class AgentHistoryAnalyzer:
     def _build_html(self) -> str:
         stats = self.analysis_result["statistics"]
         tool_usage = self.analysis_result["tool_usage"]
-        compression_events = self.analysis_result["compression_events"]
         timeline = self.analysis_result["timeline"]
-
-        timeline_chart_data = self._prepare_timeline_chart_data()
-        tool_usage_chart_data = self._prepare_tool_usage_chart_data()
 
         html = self._get_html_start()
         html += self._get_css_section()
         html += self._get_html_body_start()
         html += self._get_header_section()
         html += self._get_stats_section(stats)
-        html += self._get_timeline_chart_section()
-        html += self._get_tool_usage_chart_section()
-        html += self._get_tool_table_section(tool_usage)
-        if compression_events:
-            html += self._generate_compression_section(compression_events)
         html += self._get_timeline_section(timeline)
+        html += self._get_tool_table_section(tool_usage)
         html += self._get_metadata_section(self.analysis_result)
         html += self._get_html_body_end()
-        html += self._get_js_section(timeline_chart_data, tool_usage_chart_data)
+        html += self._get_js_section()
         html += self._get_html_end()
 
         return html
@@ -224,8 +233,7 @@ class AgentHistoryAnalyzer:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent History Analysis Report</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>"""
+    <title>Agent History Analysis Report</title>"""
 
     def _get_css_section(self) -> str:
         return """
@@ -286,12 +294,6 @@ class AgentHistoryAnalyzer:
             margin-bottom: 20px;
             padding-bottom: 10px;
             border-bottom: 3px solid #667eea;
-        }
-        
-        .chart-container {
-            position: relative;
-            height: 400px;
-            margin: 20px 0;
         }
         
         .timeline-item {
@@ -454,29 +456,17 @@ class AgentHistoryAnalyzer:
             </div>
         </div>"""
 
-    def _get_timeline_chart_section(self) -> str:
-        return """
-        <div class="section">
-            <h2 class="section-title">时间线可视化</h2>
-            <div class="chart-container">
-                <canvas id="timelineChart"></canvas>
-            </div>
-        </div>"""
-
-    def _get_tool_usage_chart_section(self) -> str:
-        return """
-        <div class="section">
-            <h2 class="section-title">工具使用统计</h2>
-            <div class="chart-container">
-                <canvas id="toolUsageChart"></canvas>
-            </div>
-        </div>"""
-
     def _get_tool_table_section(self, tool_usage: Dict) -> str:
         rows = []
-        for tool_name, count in tool_usage.items():
+        for tool_name, stats in tool_usage.items():
+            count = stats["count"]
+            total_time = stats["total_time"]
+            avg_time = total_time / count if count > 0 else 0
             rows.append(
-                f'<tr><td><span class="badge badge-orange">{tool_name}</span></td><td>{count}</td></tr>'
+                f"<tr><td><span class='badge badge-orange'>{tool_name}</span></td>"
+                f"<td>{count}</td>"
+                f"<td>{avg_time:.2f}s</td>"
+                f"<td>{total_time:.2f}s</td></tr>"
             )
 
         return f"""
@@ -487,39 +477,8 @@ class AgentHistoryAnalyzer:
                     <tr>
                         <th>工具名称</th>
                         <th>调用次数</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {"\n".join(rows)}
-                </tbody>
-            </table>
-        </div>"""
-
-    def _generate_compression_section(self, compression_events: List) -> str:
-        rows = []
-        for event in compression_events:
-            timestamp_str = datetime.fromtimestamp(event["timestamp"]).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-            rows.append(f"""<tr>
-                <td>{event["request_id"]}</td>
-                <td>{timestamp_str}</td>
-                <td>{event["before"]}</td>
-                <td>{event["after"]}</td>
-                <td>{event["rate"]:.1%}</td>
-            </tr>""")
-
-        return f"""
-        <div class="section">
-            <h2 class="section-title">上下文压缩事件</h2>
-            <table class="tool-table">
-                <thead>
-                    <tr>
-                        <th>请求ID</th>
-                        <th>时间</th>
-                        <th>压缩前Token</th>
-                        <th>压缩后Token</th>
-                        <th>压缩率</th>
+                        <th>平均耗时</th>
+                        <th>总耗时</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -591,7 +550,7 @@ class AgentHistoryAnalyzer:
                 <div class="message-content">
                     压缩前: {request["compression"]["before"]} tokens → 
                     压缩后: {request["compression"]["after"]} tokens 
-                    (压缩率: {request["compression"]["rate"]:.1%})
+                    (压缩率: {request["compression"]["rate"] / 100:.1%})
                 </div>
             </div>""")
 
@@ -647,91 +606,9 @@ class AgentHistoryAnalyzer:
         return """
     </div>"""
 
-    def _get_js_section(self, timeline_data: Dict, tool_data: Dict) -> str:
-        timeline_labels = json.dumps(timeline_data["labels"])
-        timeline_values = json.dumps(timeline_data["data"])
-        tool_labels = json.dumps(tool_data["labels"])
-        tool_values = json.dumps(tool_data["data"])
-
-        js_template = """
+    def _get_js_section(self) -> str:
+        return """
     <script>
-        const timelineCtx = document.getElementById('timelineChart').getContext('2d');
-        const timelineChart = new Chart(timelineCtx, {
-            type: 'line',
-            data: {
-                labels: TIMELINE_LABELS,
-                datasets: [{
-                    label: '请求耗时 (秒)',
-                    data: TIMELINE_VALUES,
-                    borderColor: '#667eea',
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: '各对话轮次耗时'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: '耗时 (秒)'
-                        }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: '对话轮次'
-                        }
-                    }
-                }
-            }
-        });
-        
-        const toolCtx = document.getElementById('toolUsageChart').getContext('2d');
-        const toolChart = new Chart(toolCtx, {
-            type: 'bar',
-            data: {
-                labels: TOOL_LABELS,
-                datasets: [{
-                    label: '调用次数',
-                    data: TOOL_VALUES,
-                    backgroundColor: [
-                        '#667eea', '#764ba2', '#f093fb', '#f5576c',
-                        '#4facfe', '#00f2fe', '#43e97b', '#38f9d7'
-                    ],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: '工具调用频次统计'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: '调用次数'
-                        }
-                    }
-                }
-            }
-        });
-        
         function toggleCollapsible(header) {
             const content = header.nextElementSibling;
             const arrow = header.querySelector('.arrow');
@@ -755,31 +632,10 @@ class AgentHistoryAnalyzer:
         }
     </script>"""
 
-        return (
-            js_template.replace("TIMELINE_LABELS", timeline_labels)
-            .replace("TIMELINE_VALUES", timeline_values)
-            .replace("TOOL_LABELS", tool_labels)
-            .replace("TOOL_VALUES", tool_values)
-        )
-
     def _get_html_end(self) -> str:
         return """
 </body>
 </html>"""
-
-    def _prepare_timeline_chart_data(self) -> Dict:
-        labels = []
-        data = []
-        for i, request in enumerate(self.analysis_result["timeline"], 1):
-            labels.append(f"#{i}")
-            data.append(request["duration"])
-        return {"labels": labels, "data": data}
-
-    def _prepare_tool_usage_chart_data(self) -> Dict:
-        tool_usage = self.analysis_result["tool_usage"]
-        labels = list(tool_usage.keys())
-        data = list(tool_usage.values())
-        return {"labels": labels, "data": data}
 
     def _escape_html(self, text: str) -> str:
         if not text:
@@ -814,8 +670,13 @@ class AgentHistoryAnalyzer:
         print(f"总耗时: {stats['total_time']:.2f} 秒")
         print(f"平均耗时: {stats['avg_request_time']:.2f} 秒")
         print("\n工具使用统计:")
-        for tool_name, count in self.analysis_result["tool_usage"].items():
-            print(f"  - {tool_name}: {count} 次")
+        for tool_name, tool_stats in self.analysis_result["tool_usage"].items():
+            count = tool_stats["count"]
+            total_time = tool_stats["total_time"]
+            avg_time = total_time / count if count > 0 else 0
+            print(
+                f"  - {tool_name}: {count} 次 (平均: {avg_time:.2f}s, 总计: {total_time:.2f}s)"
+            )
         print("=" * 40)
 
 

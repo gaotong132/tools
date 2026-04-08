@@ -45,4 +45,4 @@ Thumbs.db
 .env.local
 
 # generate
-report.html
+*report.html
