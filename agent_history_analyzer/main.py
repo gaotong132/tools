@@ -4,8 +4,9 @@ import argparse
 import sys
 from typing import Optional
 
+from util import JSONLoader
+
 from .analyzer import EventAnalyzer
-from .loader import JSONLoader
 from .models import AnalysisResult
 from .reporter import HTMLReporter
 
@@ -33,6 +34,7 @@ class AgentHistoryAnalyzer:
         if verbose:
             self._print_summary()
 
+        assert self.analysis_result is not None
         self.reporter.generate(self.analysis_result, output_path)
         return True
 

@@ -109,9 +109,9 @@ class HTMLReporter:
     def _render_user_input(self, user_input: str) -> str:
         """渲染用户输入"""
         return f"""<div class="flow-item">
-            <div class="time-column"></div>
-            <div class="content-column">
-                <div class="message-box user-message">
+            <div class="message-box user-message">
+                <div class="message-time"><span class="duration-badge">-</span></div>
+                <div class="message-body">
                     <div class="message-label"><span class="badge badge-blue">用户输入</span></div>
                     <div class="message-content">{escape_html(user_input)}</div>
                 </div>
@@ -136,9 +136,9 @@ class HTMLReporter:
         content = flow_item.content or ""
 
         return f"""<div class="flow-item">
-            <div class="time-column">{time_html}</div>
-            <div class="content-column">
-                <div class="message-box assistant-message">
+            <div class="message-box assistant-message">
+                <div class="message-time">{time_html}</div>
+                <div class="message-body">
                     <div class="message-label"><span class="badge badge-green">推理过程</span></div>
                     <div class="message-content">{escape_html(content)}</div>
                 </div>
@@ -161,9 +161,9 @@ class HTMLReporter:
             </div>"""
 
         return f"""<div class="flow-item">
-            <div class="time-column">{time_html}</div>
-            <div class="content-column">
-                <div class="message-box tool-call">
+            <div class="message-box tool-call">
+                <div class="message-time">{time_html}</div>
+                <div class="message-body">
                     <div class="message-label">
                         <span class="badge badge-orange">工具调用: {tool_name}</span>
                         <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
@@ -203,9 +203,9 @@ class HTMLReporter:
         rate = flow_item.rate or 0
 
         return f"""<div class="flow-item">
-            <div class="time-column">{time_html}</div>
-            <div class="content-column">
-                <div class="message-box compression">
+            <div class="message-box compression">
+                <div class="message-time">{time_html}</div>
+                <div class="message-body">
                     <div class="message-label">
                         <span class="badge badge-red">上下文压缩</span>
                         <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
@@ -225,9 +225,9 @@ class HTMLReporter:
         content = flow_item.content or ""
 
         return f"""<div class="flow-item">
-            <div class="time-column">{time_html}</div>
-            <div class="content-column">
-                <div class="message-box assistant-message">
+            <div class="message-box assistant-message">
+                <div class="message-time">{time_html}</div>
+                <div class="message-body">
                     <div class="message-label"><span class="badge badge-green">助手回复</span></div>
                     <div class="message-content">{escape_html(content)}</div>
                 </div>

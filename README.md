@@ -9,12 +9,14 @@ tools/
 ├── agent_history_analyzer/    # Agent历史分析工具包
 │   ├── __init__.py            # 包入口
 │   ├── main.py                # CLI入口
-│   ├── loader.py              # JSON加载器
 │   ├── analyzer.py            # 数据分析器
 │   ├── reporter.py            # HTML报告生成器
 │   ├── templates.py           # HTML模板
 │   ├── constants.py           # 常量定义
 │   └── models.py              # 数据类定义
+├── util/                      # 通用工具模块
+│   ├── __init__.py
+│   └── loader.py              # JSON加载器
 ├── venv/                      # 虚拟环境
 ├── pyproject.toml             # 项目配置
 └── README.md                  # 项目说明
@@ -103,5 +105,5 @@ analyzer.run(output_path="report.html", verbose=True)
 
 ```toml
 [project.scripts]
-<tool-name> = "<tool_name>.main:main"
+tool-name = "tool_package.main:main"
 ```

@@ -105,17 +105,7 @@ CSS_TEMPLATE = """
         .request-details.active { display: block; }
 
         .flow-item {
-            display: flex;
             margin: 10px 0;
-            align-items: flex-start;
-        }
-        .time-column {
-            min-width: 80px;
-            padding-right: 15px;
-            text-align: right;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85em;
-            padding-top: 15px;
         }
         .duration-badge {
             display: inline-block;
@@ -124,7 +114,9 @@ CSS_TEMPLATE = """
             padding: 3px 8px;
             border-radius: 4px;
             font-weight: bold;
-            font-size: 0.9em;
+            font-size: 0.85em;
+            min-width: 60px;
+            text-align: center;
         }
         .cumulative-time {
             display: inline-block;
@@ -135,13 +127,22 @@ CSS_TEMPLATE = """
             font-size: 0.85em;
             margin-top: 3px;
         }
-        .content-column { flex: 1; }
 
         .message-box {
             background: white;
             border: 1px solid #e0e0e0;
             border-radius: 8px;
             padding: 15px;
+            display: flex;
+            gap: 15px;
+        }
+        .message-time {
+            flex-shrink: 0;
+            padding-top: 2px;
+        }
+        .message-body {
+            flex: 1;
+            min-width: 0;
         }
         .user-message { border-left: 4px solid #2196F3; }
         .assistant-message { border-left: 4px solid #4CAF50; }
