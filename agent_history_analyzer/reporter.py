@@ -170,7 +170,7 @@ class HTMLReporter:
         if flow_item.result:
             result_html = f"""<div style="margin-top: 10px;">
                 <div class="message-label"><strong>结果:</strong></div>
-                <pre style="white-space: pre-wrap; word-wrap: break-word; background: #f5f5f5; padding: 8px; border-radius: 4px; font-size: 0.85em;">{escape_html(str(flow_item.result))}</pre>
+                <pre style="white-space: pre-wrap; word-wrap: break-word; background: #f5f5f5; padding: 8px; border-radius: 4px; overflow-x: auto; font-size: 0.85em;">{escape_html(str(flow_item.result))}</pre>
             </div>"""
 
         return f"""<div class="flow-item">
@@ -252,11 +252,11 @@ class HTMLReporter:
         try:
             params = json.loads(arguments)
         except (json.JSONDecodeError, TypeError):
-            return f"<pre>{escape_html(arguments)}</pre>"
+            return f"<pre style='background: #f5f5f5; padding: 8px; border-radius: 4px; overflow-x: auto; font-size: 0.85em;'>{escape_html(arguments)}</pre>"
 
         if tool_name == "execute_python_code" and "code_block" in params:
             code = params["code_block"]
             return f"""<pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 0.9em;"><code>{escape_html(code)}</code></pre>"""
 
         formatted_json = json.dumps(params, indent=2, ensure_ascii=False)
-        return f"<pre style='background: #f5f5f5; padding: 8px; border-radius: 4px; font-size: 0.85em;'>{escape_html(formatted_json)}</pre>"
+        return f"<pre style='background: #f5f5f5; padding: 8px; border-radius: 4px; overflow-x: auto; font-size: 0.85em;'>{escape_html(formatted_json)}</pre>"
