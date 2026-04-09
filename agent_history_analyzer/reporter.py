@@ -31,9 +31,13 @@ class HTMLReporter:
     def __init__(self, file_path: str):
         self.file_path = Path(file_path)
         self._compression_index = 0
+        self._flow_item_index = 0
 
     def generate(self, result: AnalysisResult, output_path: str) -> None:
         """生成HTML报告"""
+        # 重置索引
+        self._compression_index = 0
+        self._flow_item_index = 0
         html_content = self._build_html(result)
 
         output_file = Path(output_path)
@@ -111,8 +115,10 @@ class HTMLReporter:
 
     def _render_user_input(self, user_input: str) -> str:
         """渲染用户输入"""
+        index = self._flow_item_index
+        self._flow_item_index += 1
         return f"""<div class="flow-item">
-            <div class="message-box user-message">
+            <div class="message-box user-message" id="flow-item-{index}">
                 <div class="message-header">
                     <span class="duration-badge">-</span>
                     <span class="badge badge-blue">用户输入</span>
@@ -135,11 +141,13 @@ class HTMLReporter:
 
     def _render_reasoning(self, flow_item: FlowItem) -> str:
         """渲染推理过程"""
+        index = self._flow_item_index
+        self._flow_item_index += 1
         time_html = format_time_display(flow_item.duration)
         content = flow_item.content or ""
 
         return f"""<div class="flow-item">
-            <div class="message-box assistant-message">
+            <div class="message-box assistant-message" id="flow-item-{index}">
                 <div class="message-header">
                     {time_html}
                     <span class="badge badge-green">推理过程</span>
@@ -150,6 +158,8 @@ class HTMLReporter:
 
     def _render_tool_call(self, flow_item: FlowItem) -> str:
         """渲染工具调用"""
+        index = self._flow_item_index
+        self._flow_item_index += 1
         tool_name = flow_item.name or "unknown"
         arguments = flow_item.arguments or "{}"
         timestamp_str = datetime.fromtimestamp(flow_item.timestamp).strftime("%H:%M:%S")
@@ -164,7 +174,7 @@ class HTMLReporter:
             </div>"""
 
         return f"""<div class="flow-item">
-            <div class="message-box tool-call">
+            <div class="message-box tool-call" id="flow-item-{index}">
                 <div class="message-header">
                     {time_html}
                     <span class="badge badge-orange">工具调用: {tool_name}</span>
@@ -200,11 +210,13 @@ class HTMLReporter:
         before = flow_item.before or 0
         after = flow_item.after or 0
         rate = flow_item.rate or 0
-        index = self._compression_index
+        compression_index = self._compression_index
+        flow_index = self._flow_item_index
         self._compression_index += 1
+        self._flow_item_index += 1
 
         return f"""<div class="flow-item">
-            <div class="message-box compression" id="compression-{index}">
+            <div class="message-box compression" id="flow-item-{flow_index}" data-compression="{compression_index}">
                 <div class="message-header">
                     {time_html}
                     <span class="badge badge-red">上下文压缩</span>
@@ -220,11 +232,13 @@ class HTMLReporter:
 
     def _render_assistant_response(self, flow_item: FlowItem) -> str:
         """渲染助手响应"""
+        index = self._flow_item_index
+        self._flow_item_index += 1
         time_html = format_time_display(flow_item.duration)
         content = flow_item.content or ""
 
         return f"""<div class="flow-item">
-            <div class="message-box assistant-message">
+            <div class="message-box assistant-message" id="flow-item-{index}">
                 <div class="message-header">
                     {time_html}
                     <span class="badge badge-green">助手回复</span>

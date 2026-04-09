@@ -230,6 +230,23 @@ CSS_TEMPLATE = """
 
 JS_TEMPLATE = """
     <script>
+        function scrollToCard(card) {
+            if (!card) return;
+            // 展开父级详情
+            let details = card.closest('.request-details');
+            if (details && !details.classList.contains('active')) {
+                details.classList.add('active');
+            }
+            // 滚动到卡片
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // 高亮效果
+            card.style.transition = 'box-shadow 0.3s';
+            card.style.boxShadow = '0 0 15px rgba(102, 126, 234, 0.8)';
+            setTimeout(function() {
+                card.style.boxShadow = '';
+            }, 2000);
+        }
+
         function toggleCollapsible(header) {
             const content = header.nextElementSibling;
             const arrow = header.querySelector('.arrow');
@@ -334,21 +351,9 @@ def get_context_chart_section(compression_events: List) -> str:
                     onClick: function(event, elements) {{
                         if (elements.length > 0) {{
                             const index = elements[0].index;
-                            const card = document.getElementById('compression-' + index);
+                            const card = document.querySelector('[data-compression="' + index + '"]');
                             if (card) {{
-                                // 展开父级详情
-                                let details = card.closest('.request-details');
-                                if (details && !details.classList.contains('active')) {{
-                                    details.classList.add('active');
-                                }}
-                                // 滚动到卡片
-                                card.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
-                                // 高亮效果
-                                card.style.transition = 'box-shadow 0.3s';
-                                card.style.boxShadow = '0 0 15px rgba(102, 126, 234, 0.8)';
-                                setTimeout(function() {{
-                                    card.style.boxShadow = '';
-                                }}, 2000);
+                                scrollToCard(card);
                             }}
                         }}
                     }},
@@ -456,7 +461,8 @@ def get_top_duration_section(top_steps: List) -> str:
             if step.duration > 5
             else ("badge-orange" if step.duration > 2 else "badge-blue")
         )
-        rows.append(f"""<tr>
+        flow_index = step.flow_item_index
+        rows.append(f"""<tr onclick="scrollToCard(document.getElementById('flow-item-{flow_index}'))" style="cursor: pointer;">
             <td><strong>#{i}</strong></td>
             <td><span class='badge {badge_class}'>{step.duration:.2f}s</span></td>
             <td><span class='badge badge-green'>{step.type}</span></td>
@@ -467,7 +473,7 @@ def get_top_duration_section(top_steps: List) -> str:
     rows_joined = NEWLINE.join(rows)
     return f"""
         <div class="section">
-            <h2 class="section-title">耗时排行榜 (Top 20)</h2>
+            <h2 class="section-title">耗时排行榜 (Top 20) - 点击跳转</h2>
             <table class="tool-table">
                 <thead>
                     <tr>

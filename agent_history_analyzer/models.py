@@ -95,6 +95,7 @@ class TopDurationStep:
     duration: float
     summary: str
     user_input: str
+    flow_item_index: int = 0
 
 
 @dataclass(init=False)

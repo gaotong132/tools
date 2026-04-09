@@ -311,15 +311,23 @@ class EventAnalyzer:
     def _calculate_top_duration_steps(self, result: AnalysisResult):
         """计算耗时排行"""
         all_steps: List[TopDurationStep] = []
+        flow_item_index = 0
 
         for request in result.timeline:
             request_id = request.request_id
             user_input = request.user_input
 
+            # 用户输入卡片也算一个流程项
+            if request.user_input:
+                flow_item_index += 1
+
             for flow_item in request.execution_flow:
-                step = self._create_step_from_flow_item(flow_item, request_id, user_input)
+                step = self._create_step_from_flow_item(
+                    flow_item, request_id, user_input, flow_item_index
+                )
                 if step:
                     all_steps.append(step)
+                flow_item_index += 1
 
         all_steps.sort(key=lambda x: x.duration, reverse=True)
         result.top_duration_steps = all_steps[:20]
@@ -329,6 +337,7 @@ class EventAnalyzer:
         flow_item: FlowItem,
         request_id: str,
         user_input: str,
+        flow_item_index: int,
     ) -> Optional[TopDurationStep]:
         """从流程项创建步骤"""
         duration = flow_item.duration
@@ -342,6 +351,7 @@ class EventAnalyzer:
                 duration=duration,
                 summary=summary,
                 user_input=user_input[:50] + ("..." if len(user_input) > 50 else ""),
+                flow_item_index=flow_item_index,
             )
 
         elif flow_item.type == FlowItemType.TOOL_CALL:
@@ -351,6 +361,7 @@ class EventAnalyzer:
                 duration=duration,
                 summary=f"工具: {flow_item.name or 'unknown'}",
                 user_input=user_input[:50] + ("..." if len(user_input) > 50 else ""),
+                flow_item_index=flow_item_index,
             )
 
         elif flow_item.type == FlowItemType.ASSISTANT_RESPONSE:
@@ -362,6 +373,7 @@ class EventAnalyzer:
                 duration=duration,
                 summary=summary,
                 user_input=user_input[:50] + ("..." if len(user_input) > 50 else ""),
+                flow_item_index=flow_item_index,
             )
 
         return None
