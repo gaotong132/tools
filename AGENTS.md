@@ -42,13 +42,12 @@ pytest                           # Run tests
 tools/
 ├── agent_history_analyzer/    # Package (one per tool)
 │   ├── main.py                # CLI entry point
+│   ├── loader.py              # JSON loading
 │   ├── analyzer.py            # Event processing
 │   ├── reporter.py            # HTML generation
 │   ├── templates.py           # HTML/CSS/JS templates
 │   ├── constants.py           # Enums (EventType, FlowItemType)
 │   └── models.py              # Dataclasses
-├── util/                      # Shared utilities
-│   └── loader.py              # JSON loader
 ├── venv/
 └── pyproject.toml             # Config + tool settings
 ```
