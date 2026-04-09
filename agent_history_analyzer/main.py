@@ -4,9 +4,8 @@ import argparse
 import sys
 from typing import Optional
 
-from .loader import JSONLoader
-
 from .analyzer import EventAnalyzer
+from .loader import JSONLoader
 from .models import AnalysisResult
 from .reporter import HTMLReporter
 

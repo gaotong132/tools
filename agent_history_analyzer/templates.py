@@ -133,28 +133,22 @@ CSS_TEMPLATE = """
             border: 1px solid #e0e0e0;
             border-radius: 8px;
             padding: 15px;
+        }
+        .message-header {
             display: flex;
-            gap: 15px;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
         }
-        .message-time {
-            flex-shrink: 0;
-            padding-top: 2px;
+        .message-label {
+            font-weight: bold;
+            color: #666;
         }
-        .message-body {
-            flex: 1;
-            min-width: 0;
-        }
+        .message-content { color: #333; }
         .user-message { border-left: 4px solid #2196F3; }
         .assistant-message { border-left: 4px solid #4CAF50; }
         .tool-call { border-left: 4px solid #FF9800; }
         .compression { border-left: 4px solid #F44336; }
-
-        .message-label {
-            font-weight: bold;
-            color: #666;
-            margin-bottom: 10px;
-        }
-        .message-content { color: #333; }
 
         .tool-table {
             width: 100%;

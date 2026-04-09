@@ -110,11 +110,11 @@ class HTMLReporter:
         """渲染用户输入"""
         return f"""<div class="flow-item">
             <div class="message-box user-message">
-                <div class="message-time"><span class="duration-badge">-</span></div>
-                <div class="message-body">
-                    <div class="message-label"><span class="badge badge-blue">用户输入</span></div>
-                    <div class="message-content">{escape_html(user_input)}</div>
+                <div class="message-header">
+                    <span class="duration-badge">-</span>
+                    <span class="badge badge-blue">用户输入</span>
                 </div>
+                <div class="message-content">{escape_html(user_input)}</div>
             </div>
         </div>"""
 
@@ -137,11 +137,11 @@ class HTMLReporter:
 
         return f"""<div class="flow-item">
             <div class="message-box assistant-message">
-                <div class="message-time">{time_html}</div>
-                <div class="message-body">
-                    <div class="message-label"><span class="badge badge-green">推理过程</span></div>
-                    <div class="message-content">{escape_html(content)}</div>
+                <div class="message-header">
+                    {time_html}
+                    <span class="badge badge-green">推理过程</span>
                 </div>
+                <div class="message-content">{escape_html(content)}</div>
             </div>
         </div>"""
 
@@ -162,18 +162,14 @@ class HTMLReporter:
 
         return f"""<div class="flow-item">
             <div class="message-box tool-call">
-                <div class="message-time">{time_html}</div>
-                <div class="message-body">
-                    <div class="message-label">
-                        <span class="badge badge-orange">工具调用: {tool_name}</span>
-                        <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <div class="message-label"><strong>参数:</strong></div>
-                        {params_html}
-                    </div>
-                    {result_html}
+                <div class="message-header">
+                    {time_html}
+                    <span class="badge badge-orange">工具调用: {tool_name}</span>
+                    <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
                 </div>
+                <div class="message-label"><strong>参数:</strong></div>
+                {params_html}
+                {result_html}
             </div>
         </div>"""
 
@@ -204,17 +200,15 @@ class HTMLReporter:
 
         return f"""<div class="flow-item">
             <div class="message-box compression">
-                <div class="message-time">{time_html}</div>
-                <div class="message-body">
-                    <div class="message-label">
-                        <span class="badge badge-red">上下文压缩</span>
-                        <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
-                    </div>
-                    <div class="message-content">
-                        <div>压缩前: {before} tokens</div>
-                        <div>压缩后: {after} tokens</div>
-                        <div>压缩率: {rate / 100:.1%}</div>
-                    </div>
+                <div class="message-header">
+                    {time_html}
+                    <span class="badge badge-red">上下文压缩</span>
+                    <span style="font-size: 0.9em; color: #999;">{timestamp_str}</span>
+                </div>
+                <div class="message-content">
+                    <div>压缩前: {before} tokens</div>
+                    <div>压缩后: {after} tokens</div>
+                    <div>压缩率: {rate / 100:.1%}</div>
                 </div>
             </div>
         </div>"""
@@ -226,11 +220,11 @@ class HTMLReporter:
 
         return f"""<div class="flow-item">
             <div class="message-box assistant-message">
-                <div class="message-time">{time_html}</div>
-                <div class="message-body">
-                    <div class="message-label"><span class="badge badge-green">助手回复</span></div>
-                    <div class="message-content">{escape_html(content)}</div>
+                <div class="message-header">
+                    {time_html}
+                    <span class="badge badge-green">助手回复</span>
                 </div>
+                <div class="message-content">{escape_html(content)}</div>
             </div>
         </div>"""
 
