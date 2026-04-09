@@ -12,6 +12,7 @@ from .templates import (
     JS_TEMPLATE,
     escape_html,
     format_time_display,
+    get_context_chart_section,
     get_header_section,
     get_html_body_end,
     get_html_body_start,
@@ -29,6 +30,7 @@ class HTMLReporter:
 
     def __init__(self, file_path: str):
         self.file_path = Path(file_path)
+        self._compression_index = 0
 
     def generate(self, result: AnalysisResult, output_path: str) -> None:
         """生成HTML报告"""
@@ -49,6 +51,7 @@ class HTMLReporter:
             get_html_body_start(),
             get_header_section(),
             get_stats_section(result.statistics),
+            get_context_chart_section(result.compression_events),
             self._get_timeline_section(result.timeline),
             get_top_duration_section(result.top_duration_steps),
             get_metadata_section(
@@ -197,9 +200,11 @@ class HTMLReporter:
         before = flow_item.before or 0
         after = flow_item.after or 0
         rate = flow_item.rate or 0
+        index = self._compression_index
+        self._compression_index += 1
 
         return f"""<div class="flow-item">
-            <div class="message-box compression">
+            <div class="message-box compression" id="compression-{index}">
                 <div class="message-header">
                     {time_html}
                     <span class="badge badge-red">上下文压缩</span>

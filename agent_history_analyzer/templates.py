@@ -150,6 +150,25 @@ CSS_TEMPLATE = """
         .tool-call { border-left: 4px solid #FF9800; }
         .compression { border-left: 4px solid #F44336; }
 
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .chart-title {
+            font-size: 1.2em;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+        }
+
         .tool-table {
             width: 100%;
             border-collapse: collapse;
@@ -245,7 +264,8 @@ def get_html_start() -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent History Analysis Report</title>"""
+    <title>Agent History Analysis Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>"""
 
 
 def get_html_head_end() -> str:
@@ -267,6 +287,101 @@ def get_html_end() -> str:
     return """
 </body>
 </html>"""
+
+
+def get_context_chart_section(compression_events: List) -> str:
+    """生成上下文变化曲线图"""
+    if not compression_events:
+        return ""
+
+    labels = [str(i + 1) for i in range(len(compression_events))]
+    before_data = [e["before"] for e in compression_events]
+    after_data = [e["after"] for e in compression_events]
+
+    return f"""
+        <div class="chart-container">
+            <div class="chart-title">上下文变化曲线 (点击柱状条跳转到详情)</div>
+            <div class="chart-wrapper">
+                <canvas id="contextChart"></canvas>
+            </div>
+        </div>
+        <script>
+            const ctx = document.getElementById('contextChart').getContext('2d');
+            new Chart(ctx, {{
+                type: 'bar',
+                data: {{
+                    labels: {labels},
+                    datasets: [
+                        {{
+                            label: '压缩前',
+                            data: {before_data},
+                            backgroundColor: 'rgba(244, 67, 54, 0.7)',
+                            borderColor: '#F44336',
+                            borderWidth: 1
+                        }},
+                        {{
+                            label: '压缩后',
+                            data: {after_data},
+                            backgroundColor: 'rgba(76, 175, 80, 0.7)',
+                            borderColor: '#4CAF50',
+                            borderWidth: 1
+                        }}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    onClick: function(event, elements) {{
+                        if (elements.length > 0) {{
+                            const index = elements[0].index;
+                            const card = document.getElementById('compression-' + index);
+                            if (card) {{
+                                // 展开父级详情
+                                let details = card.closest('.request-details');
+                                if (details && !details.classList.contains('active')) {{
+                                    details.classList.add('active');
+                                }}
+                                // 滚动到卡片
+                                card.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                                // 高亮效果
+                                card.style.transition = 'box-shadow 0.3s';
+                                card.style.boxShadow = '0 0 15px rgba(102, 126, 234, 0.8)';
+                                setTimeout(function() {{
+                                    card.style.boxShadow = '';
+                                }}, 2000);
+                            }}
+                        }}
+                    }},
+                    plugins: {{
+                        legend: {{
+                            position: 'top'
+                        }},
+                        tooltip: {{
+                            callbacks: {{
+                                label: function(context) {{
+                                    return context.dataset.label + ': ' + context.raw + ' tokens';
+                                }}
+                            }}
+                        }}
+                    }},
+                    scales: {{
+                        y: {{
+                            beginAtZero: true,
+                            title: {{
+                                display: true,
+                                text: 'Tokens'
+                            }}
+                        }},
+                        x: {{
+                            title: {{
+                                display: true,
+                                text: '压缩次数'
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+        </script>"""
 
 
 def get_header_section() -> str:
