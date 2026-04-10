@@ -40,7 +40,8 @@ source venv/bin/activate
 pip install -e .
 
 # 4. 运行工具
-agent-history-analyzer <json_file_path>
+agent-history-analyzer              # 自动分析最新会话
+agent-history-analyzer <json_file>  # 分析指定文件
 ```
 
 ## Agent History Analyzer
@@ -56,7 +57,10 @@ agent-history-analyzer <json_file_path>
 **使用方法：**
 
 ```bash
-# 基本用法
+# 自动分析最新会话（不带参数时，自动查找 ~/.jiuwenclaw/agent/sessions/ 下最新的 history.json）
+agent-history-analyzer
+
+# 分析指定文件
 agent-history-analyzer <json_file_path>
 
 # 指定输出文件
@@ -66,6 +70,7 @@ agent-history-analyzer <json_file_path> --output my_report.html
 agent-history-analyzer <json_file_path> --verbose
 
 # 或作为模块运行
+python -m agent_history_analyzer
 python -m agent_history_analyzer <json_file_path>
 ```
 

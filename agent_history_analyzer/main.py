@@ -2,12 +2,15 @@
 
 import argparse
 import sys
+from pathlib import Path
 from typing import Optional
 
 from .analyzer import EventAnalyzer
 from .loader import JSONLoader
 from .models import AnalysisResult
 from .reporter import HTMLReporter
+
+DEFAULT_SESSIONS_DIR = Path.home() / ".jiuwenclaw" / "agent" / "sessions"
 
 
 class AgentHistoryAnalyzer:
@@ -60,6 +63,18 @@ class AgentHistoryAnalyzer:
         print("=" * 40)
 
 
+def find_latest_history(sessions_dir: Path = DEFAULT_SESSIONS_DIR) -> Optional[Path]:
+    """在sessions目录下查找最新的history.json文件"""
+    if not sessions_dir.exists():
+        return None
+
+    history_files = list(sessions_dir.rglob("history.json"))
+    if not history_files:
+        return None
+
+    return max(history_files, key=lambda p: p.stat().st_mtime)
+
+
 def main():
     """CLI入口"""
     parser = argparse.ArgumentParser(
@@ -67,13 +82,18 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例用法:
+  python -m agent_history_analyzer                    # 分析最新的会话
   python -m agent_history_analyzer history.json
   python -m agent_history_analyzer history.json --output my_report.html
   python -m agent_history_analyzer history.json --verbose
         """,
     )
 
-    parser.add_argument("json_file", help="JSON历史文件路径")
+    parser.add_argument(
+        "json_file",
+        nargs="?",
+        help="JSON历史文件路径 (默认: 分析最新的会话)",
+    )
     parser.add_argument(
         "--output",
         "-o",
@@ -84,7 +104,16 @@ def main():
 
     args = parser.parse_args()
 
-    analyzer = AgentHistoryAnalyzer(args.json_file)
+    if args.json_file:
+        json_path = Path(args.json_file)
+    else:
+        json_path = find_latest_history()
+        if json_path is None:
+            print(f"错误: 在 {DEFAULT_SESSIONS_DIR} 下未找到任何 history.json 文件")
+            sys.exit(1)
+        print(f"使用最新会话: {json_path}")
+
+    analyzer = AgentHistoryAnalyzer(str(json_path))
     success = analyzer.run(output_path=args.output, verbose=args.verbose)
 
     if not success:

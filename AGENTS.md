@@ -19,13 +19,19 @@ pip install -e .[dev]
 ## Running Tools
 
 ```bash
-# Agent History Analyzer
+# Agent History Analyzer - analyze latest session automatically
+agent-history-analyzer
+
+# Or specify a file
 agent-history-analyzer <json_file_path>
 agent-history-analyzer <json_file_path> --output my_report.html --verbose
 
 # Or as module
+python -m agent_history_analyzer
 python -m agent_history_analyzer <json_file_path>
 ```
+
+When called without arguments, it searches `~/.jiuwenclaw/agent/sessions/` for the most recent `history.json` file.
 
 ## Development Commands
 
