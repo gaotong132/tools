@@ -20,11 +20,11 @@ pip install -e .[dev]
 
 ```bash
 # Agent History Analyzer - analyze latest session automatically
-agent-history-analyzer
+ha
 
 # Or specify a file
-agent-history-analyzer <json_file_path>
-agent-history-analyzer <json_file_path> --output my_report.html --verbose
+ha <json_file_path>
+ha <json_file_path> --output my_report.html --verbose
 
 # Or as module
 python -m agent_history_analyzer
