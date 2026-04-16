@@ -11,6 +11,7 @@ from .templates import (
     CONTENT_TEMPLATE,
     INDEX_TEMPLATE,
     ITERATION_DETAIL_TEMPLATE,
+    JSON_BLOCK_TEMPLATE,
     REASONING_TEMPLATE,
     REQUEST_TEMPLATE,
     RESPONSE_TEMPLATE,
@@ -21,6 +22,8 @@ from .templates import (
 
 
 class HTMLReporter:
+    _id_counter = 0
+
     def __init__(self, log_file_path: str):
         self.log_file_path = log_file_path
 
@@ -77,7 +80,7 @@ class HTMLReporter:
 
         iterations_html = self._generate_iterations_html(chain)
 
-        html = SESSION_DETAIL_TEMPLATE.format(
+        html_content = SESSION_DETAIL_TEMPLATE.format(
             session_id_short=short_id,
             session_id=chain.session_id,
             model_name=chain.model_name,
@@ -88,7 +91,7 @@ class HTMLReporter:
         )
 
         with open(detail_file, "w", encoding="utf-8") as f:
-            f.write(html)
+            f.write(html_content)
 
     def _short_session_id(self, session_id: str) -> str:
         if not session_id:
@@ -97,6 +100,10 @@ class HTMLReporter:
         if len(parts) >= 2:
             return parts[-1][:12]
         return session_id[:12]
+
+    def _next_id(self) -> str:
+        self._id_counter += 1
+        return f"content_{self._id_counter}"
 
     def _generate_iterations_html(self, chain: LLMChain) -> str:
         max_iterations = max(len(chain.requests), len(chain.responses))
@@ -123,16 +130,16 @@ class HTMLReporter:
         return "\n".join(iterations_parts)
 
     def _generate_request_html(self, request: LLMRequest) -> str:
-        messages_json = self._format_json(request.messages)
-        tools_json = self._format_json(request.tools)
+        messages_html = self._make_json_block(request.messages)
+        tools_html = self._make_json_block(request.tools)
         timestamp_str = self._format_timestamp(request.timestamp)
 
         return REQUEST_TEMPLATE.format(
             timestamp=timestamp_str,
             message_count=len(request.messages),
             tool_count=len(request.tools),
-            messages_json=messages_json,
-            tools_json=tools_json,
+            messages_html=messages_html,
+            tools_html=tools_html,
         )
 
     def _generate_response_html(self, response: LLMResponse) -> str:
@@ -140,17 +147,26 @@ class HTMLReporter:
 
         reasoning_html = ""
         if response.reasoning_content:
-            reasoning_html = REASONING_TEMPLATE.format(reasoning_content=response.reasoning_content)
+            content_id = self._next_id()
+            escaped_content = html.escape(response.reasoning_content)
+            reasoning_html = REASONING_TEMPLATE.format(
+                content_id=content_id,
+                reasoning_content=escaped_content,
+            )
 
         content_html = ""
         if response.content:
-            content_html = CONTENT_TEMPLATE.format(content=response.content)
+            content_id = self._next_id()
+            escaped_content = html.escape(response.content)
+            content_html = CONTENT_TEMPLATE.format(
+                content_id=content_id,
+                content=escaped_content,
+            )
 
         tool_calls_html = ""
         if response.tool_calls:
-            tool_calls_html = TOOL_CALLS_TEMPLATE.format(
-                tool_count=len(response.tool_calls),
-                tool_calls_json=self._format_json(response.tool_calls),
+            tool_calls_html = self._make_json_block(
+                response.tool_calls, tool_count=len(response.tool_calls)
             )
 
         return RESPONSE_TEMPLATE.format(
@@ -160,9 +176,18 @@ class HTMLReporter:
             tool_calls_html=tool_calls_html,
         )
 
-    def _format_json(self, obj) -> str:
+    def _make_json_block(self, obj, tool_count: int = 0) -> str:
         json_str = json.dumps(obj, indent=2, ensure_ascii=False)
-        return html.escape(json_str)
+        content_id = self._next_id()
+        escaped_content = html.escape(json_str)
+
+        if tool_count > 0:
+            return TOOL_CALLS_TEMPLATE.format(
+                content_id=content_id,
+                tool_count=tool_count,
+                tool_calls_json=escaped_content,
+            )
+        return JSON_BLOCK_TEMPLATE.format(content_id=content_id, content=escaped_content)
 
     def _format_timestamp(self, timestamp: float) -> str:
         if timestamp == 0:
