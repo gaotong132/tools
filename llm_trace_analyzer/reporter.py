@@ -1,7 +1,6 @@
 """HTML报告生成器"""
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -9,7 +8,6 @@ from typing import List
 from .models import AnalysisResult, LLMChain, LLMRequest, LLMResponse
 from .templates import (
     CONTENT_TEMPLATE,
-    EMPTY_SESSION_TEMPLATE,
     INDEX_TEMPLATE,
     ITERATION_DETAIL_TEMPLATE,
     REASONING_TEMPLATE,
@@ -38,7 +36,7 @@ class HTMLReporter:
             self._generate_session_detail(chain, report_dir)
 
         print(f"Report generated in: {report_dir}/")
-        print(f"  - index.html (session list)")
+        print("  - index.html (session list)")
         for chain in result.sorted_sessions:
             short_id = self._short_session_id(chain.session_id)
             print(f"  - session_{short_id}.html")
