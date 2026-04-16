@@ -314,6 +314,7 @@ SESSION_DETAIL_TEMPLATE = """
         .toggle-icon {{ font-size: 12px; transition: transform 0.2s; }}
         .toggle-icon.rotated {{ transform: rotate(90deg); }}
         .timestamp {{ color: #666; font-size: 12px; }}
+        .char-count {{ color: #888; font-size: 11px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px; margin-left: 10px; }}
     </style>
 </head>
 <body>
