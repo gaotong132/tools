@@ -10,7 +10,7 @@ from .loader import JSONLoader
 from .models import AnalysisResult
 from .reporter import HTMLReporter
 
-DEFAULT_SESSIONS_DIR = Path.home() / ".jiuwenclaw" / "agent" / "sessions"
+DEFAULT_SESSIONS_DIR = Path.home() / ".office-claw" / ".jiuwenclaw" / "agent" / "sessions"
 
 
 class AgentHistoryAnalyzer:
