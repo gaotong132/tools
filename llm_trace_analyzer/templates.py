@@ -25,10 +25,10 @@ HTML_TEMPLATE = """
         .session-meta {{ display: flex; gap: 20px; font-size: 14px; }}
         .session-body {{ padding: 20px; }}
         .session-body.hidden {{ display: none; }}
-        .iteration-block {{ border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; overflow: hidden; }}
+        .iteration-block {{ border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; }}
         .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; }}
         .iteration-content {{ padding: 15px; }}
-        .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 15px; margin: 10px 0; overflow: hidden; }}
+        .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 15px; margin: 10px 0; }}
         .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre; overflow-x: auto; overflow-y: auto; max-height: 400px; }}
         .label {{ display: inline-block; background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-right: 10px; }}
         .label.response {{ background: #e8f5e9; color: #388e3c; }}
@@ -271,10 +271,10 @@ SESSION_DETAIL_TEMPLATE = """
         .header .meta {{ font-size: 14px; opacity: 0.9; }}
         .back-link {{ margin-bottom: 15px; }}
         .back-link a {{ color: #4a90d9; }}
-        .iteration-block {{ border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; overflow: hidden; }}
+        .iteration-block {{ border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; }}
         .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; }}
         .iteration-content {{ padding: 15px; }}
-        .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 15px; margin: 10px 0; overflow: hidden; }}
+        .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 15px; margin: 10px 0; }}
         .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre; overflow-x: auto; overflow-y: auto; max-height: 400px; }}
         .label {{ display: inline-block; background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-right: 10px; }}
         .label.response {{ background: #e8f5e9; color: #388e3c; }}

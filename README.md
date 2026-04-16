@@ -52,21 +52,20 @@ lt <log_file> -o trace_report.html  # 分析指定日志
 **使用方法：**
 
 ```bash
-# 自动分析最新会话（不带参数时，自动查找 ~/.jiuwenclaw/agent/sessions/ 下最新的 history.json）
-agent-history-analyzer
+# 自动分析最新会话（不带参数时，自动查找 ~/.office-claw/.jiuwenclaw/agent/sessions/ 下最新的 history.json）
+ha
 
 # 分析指定文件
-agent-history-analyzer <json_file_path>
+ha <json_file_path>
 
 # 指定输出文件
-agent-history-analyzer <json_file_path> --output my_report.html
+ha <json_file_path> -o my_report.html
 
 # 显示详细信息
-agent-history-analyzer <json_file_path> --verbose
+ha <json_file_path> -v
 
 # 或作为模块运行
 python -m agent_history_analyzer
-python -m agent_history_analyzer <json_file_path>
 ```
 
 **报告内容：**
@@ -118,12 +117,14 @@ lt -v
 ```
 
 **报告内容：**
-- **统计概览**：session 数量、请求次数、响应次数、迭代次数
-- **每个 Session**：
+- **按 Session 分开**：每个 session 生成独立 HTML 文件
+- **index.html**：Session 列表索引页
+- **session_*.html**：
   - 按 iteration 展示请求→响应链路
   - 完整 JSON 展开：messages、tools、response
   - reasoning_content（推理过程）
   - tool_calls 详情
+  - 可滚动查看长内容
 
 **作为库使用：**
 
@@ -131,7 +132,7 @@ lt -v
 from llm_trace_analyzer import LLMTraceAnalyzer
 
 analyzer = LLMTraceAnalyzer("app.log")
-analyzer.run(output_path="trace_report.html", verbose=True)
+analyzer.run(output_path="trace_report", verbose=True)  # 生成 trace_report/ 目录
 ```
 
 ## 添加新工具
