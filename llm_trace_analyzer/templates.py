@@ -271,6 +271,11 @@ SESSION_DETAIL_TEMPLATE = """
         .header .meta {{ font-size: 14px; opacity: 0.9; }}
         .back-link {{ margin-bottom: 15px; }}
         .back-link a {{ color: #4a90d9; }}
+        .pagination {{ display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 20px; }}
+        .pagination button {{ padding: 8px 16px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px; }}
+        .pagination button:hover {{ background: #f0f0f0; }}
+        .pagination button:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+        .pagination .page-info {{ color: #666; }}
         .iteration-block {{ border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; }}
         .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; }}
         .iteration-content {{ padding: 15px; }}
@@ -287,6 +292,8 @@ SESSION_DETAIL_TEMPLATE = """
         .toggle-icon {{ font-size: 12px; transition: transform 0.2s; }}
         .toggle-icon.rotated {{ transform: rotate(90deg); }}
         .timestamp {{ color: #666; font-size: 12px; }}
+        .page {{ display: none; }}
+        .page.active {{ display: block; }}
     </style>
 </head>
 <body>
@@ -296,9 +303,51 @@ SESSION_DETAIL_TEMPLATE = """
             <h1>Session: {session_id_short}</h1>
             <div class="meta">Model: {model_name} | Iterations: {total_iterations} | {start_time} - {end_time}</div>
         </div>
-        {iterations_html}
+        <div class="pagination">
+            <button id="prevBtn" onclick="prevPage()">Previous</button>
+            <span class="page-info">Page <span id="currentPage">1</span> of <span id="totalPages">{total_pages}</span></span>
+            <button id="nextBtn" onclick="nextPage()">Next</button>
+        </div>
+        <div id="iterationsContainer">
+            {iterations_html}
+        </div>
     </div>
     <script>
+        const pageSize = 5;
+        let currentPage = 1;
+        const totalPages = Math.ceil(document.querySelectorAll('.iteration-block').length / pageSize);
+        
+        function showPage(page) {{
+            const blocks = document.querySelectorAll('.iteration-block');
+            blocks.forEach((block, index) => {{
+                const pageStart = (page - 1) * pageSize;
+                const pageEnd = pageStart + pageSize;
+                if (index >= pageStart && index < pageEnd) {{
+                    block.style.display = 'block';
+                }} else {{
+                    block.style.display = 'none';
+                }}
+            }});
+            
+            document.getElementById('currentPage').textContent = page;
+            document.getElementById('prevBtn').disabled = page === 1;
+            document.getElementById('nextBtn').disabled = page === totalPages;
+        }}
+        
+        function prevPage() {{
+            if (currentPage > 1) {{
+                currentPage--;
+                showPage(currentPage);
+            }}
+        }}
+        
+        function nextPage() {{
+            if (currentPage < totalPages) {{
+                currentPage++;
+                showPage(currentPage);
+            }}
+        }}
+        
         function toggleCollapsible(element) {{
             const content = element.nextElementSibling;
             const icon = element.querySelector('.toggle-icon');
@@ -310,6 +359,8 @@ SESSION_DETAIL_TEMPLATE = """
                 icon.classList.add('rotated');
             }}
         }}
+        
+        showPage(1);
     </script>
 </body>
 </html>

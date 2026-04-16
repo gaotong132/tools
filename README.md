@@ -8,7 +8,7 @@ Python工具集合项目
 tools/
 ├── agent_history_analyzer/    # Agent历史分析工具包
 ├── llm_trace_analyzer/        # LLM请求链路分析工具包
-├── venv/                      # 虚拟环境
+├── .venv/                     # 虚拟环境
 ├── pyproject.toml             # 项目配置
 └── README.md                  # 项目说明
 ```
@@ -17,17 +17,17 @@ tools/
 
 ```bash
 # 1. 创建虚拟环境
-python -m venv venv
+python -m venv .venv
 
 # 2. 激活虚拟环境
 # Windows PowerShell
-.\venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 
 # Windows CMD
-.\venv\Scripts\activate.bat
+.\.venv\Scripts\activate.bat
 
 # Linux/macOS
-source venv/bin/activate
+source .venv/bin/activate
 
 # 3. 安装项目
 pip install -e .
