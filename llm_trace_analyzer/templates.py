@@ -152,10 +152,15 @@ REQUEST_TEMPLATE = """
 SYSTEM_PROMPT_TEMPLATE = """
 <div style="margin-top: 10px;">
     <span class="label" style="background: #ffe0b2; color: #e65100;">System Prompt</span>
-    <span class="char-count">{char_count} chars</span>
-    <div class="json-container">
-        <button class="copy-btn" onclick="copyToClipboard(this, '{content_id}')">Copy</button>
-        <pre class="json-content" id="{content_id}">{system_prompt}</pre>
+    <div class="collapsible" onclick="toggleCollapsible(this)">
+        <span class="toggle-icon">&#9654;</span> Show system prompt
+        <span class="char-count">{char_count} chars</span>
+    </div>
+    <div class="collapsible-content">
+        <div class="json-container">
+            <button class="copy-btn" onclick="copyToClipboard(this, '{content_id}')">Copy</button>
+            <pre class="json-content" id="{content_id}">{system_prompt}</pre>
+        </div>
     </div>
 </div>
 """
