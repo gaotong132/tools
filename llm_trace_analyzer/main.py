@@ -75,7 +75,7 @@ def main():
 Examples:
   lt                              # Analyze latest app.log
   lt <log_file>                   # Analyze specific log file
-  lt <log_file> -o report.html    # Specify output file
+  lt <log_file> -o my_report      # Specify output directory
   lt --session <session_id>       # Filter by session
   lt -v                           # Show verbose summary
         """,
@@ -89,8 +89,8 @@ Examples:
     parser.add_argument(
         "--output",
         "-o",
-        default="llm_trace_report.html",
-        help="Output report file path (default: llm_trace_report.html)",
+        default="llm_trace_report",
+        help="Output report directory name (default: llm_trace_report)",
     )
     parser.add_argument(
         "--session",
