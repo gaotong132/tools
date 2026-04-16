@@ -30,7 +30,7 @@ class LLMTraceAnalyzer:
             return False
 
         if session_filter:
-            traces = [t for t in traces if t["session_id"] == session_filter]
+            traces = self._filter_traces_for_session(traces, session_filter, loader)
 
         if not traces:
             print("No LLM_IO_TRACE entries found in log file.")
@@ -39,8 +39,14 @@ class LLMTraceAnalyzer:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        analyzer = ChainAnalyzer(requests, responses)
+        tool_call_events = loader.load_tool_call_events()
+        subagent_start_events = loader.load_subagent_start_events()
+
+        analyzer = ChainAnalyzer(requests, responses, tool_call_events, subagent_start_events)
         result = analyzer.analyze()
+
+        if session_filter:
+            result = self._filter_result_for_session(result, session_filter)
 
         if verbose:
             self._print_summary(result)
@@ -50,6 +56,45 @@ class LLMTraceAnalyzer:
         print(f"Report generated: {output_path}")
 
         return True
+
+    def _filter_traces_for_session(
+        self, traces: list, session_filter: str, loader: LogLoader
+    ) -> list:
+        parent_traces = [t for t in traces if t["session_id"] == session_filter]
+
+        tool_call_events = loader.load_tool_call_events()
+        subagent_start_events = loader.load_subagent_start_events()
+
+        subagent_task_ids = set()
+        for event in tool_call_events:
+            if (
+                event.get("session_id") == session_filter
+                and event.get("tool_name") == "spawn_subagent"
+            ):
+                spawn_time = event.get("timestamp", 0)
+                for start_event in subagent_start_events:
+                    start_time = start_event.get("timestamp", 0)
+                    if abs(start_time - spawn_time) < 5.0:
+                        task_id = start_event.get("task_id")
+                        if task_id:
+                            subagent_task_ids.add(task_id)
+
+        subagent_session_ids = {f"subagent_{task_id}" for task_id in subagent_task_ids}
+        subagent_traces = [t for t in traces if t["session_id"] in subagent_session_ids]
+
+        return parent_traces + subagent_traces
+
+    def _filter_result_for_session(
+        self, result: AnalysisResult, session_filter: str
+    ) -> AnalysisResult:
+        from .models import AnalysisResult
+
+        filtered = AnalysisResult()
+        if session_filter in result.sessions:
+            filtered.sessions[session_filter] = result.sessions[session_filter]
+        filtered.sorted_sessions = list(filtered.sessions.values())
+        filtered.statistics = result.statistics
+        return filtered
 
     def _print_summary(self, result: AnalysisResult) -> None:
         stats = result.statistics

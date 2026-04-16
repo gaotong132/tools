@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .constants import DEFAULT_LOG_FILE, DEFAULT_LOGS_DIR, TRACE_MARKER
 
@@ -20,6 +20,203 @@ class LogLoader:
         except UnicodeDecodeError:
             with open(self.file_path, encoding="gbk") as f:
                 return self._parse_log_file(f)
+
+    def load_spawn_subagent_calls(self) -> Dict[str, List[Tuple[str, float]]]:
+        try:
+            with open(self.file_path, encoding="utf-8") as f:
+                return self._parse_spawn_subagent_calls(f)
+        except FileNotFoundError:
+            return {}
+        except UnicodeDecodeError:
+            with open(self.file_path, encoding="gbk") as f:
+                return self._parse_spawn_subagent_calls(f)
+
+    def load_tool_call_events(self) -> List[Dict[str, Any]]:
+        try:
+            with open(self.file_path, encoding="utf-8") as f:
+                return self._parse_tool_call_events(f)
+        except FileNotFoundError:
+            return []
+        except UnicodeDecodeError:
+            with open(self.file_path, encoding="gbk") as f:
+                return self._parse_tool_call_events(f)
+
+    def _parse_tool_call_events(self, f) -> List[Dict[str, Any]]:
+        events: List[Dict[str, Any]] = []
+        pattern = re.compile(
+            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\s+"
+            r"\[\d+\]\s+INFO\s+[^:]+:\d+:\s+"
+            r"\[ToolCall\]\s+tool=(\w+)\s+"
+            r"session=(\S+)"
+        )
+
+        for line in f:
+            line = line.strip()
+            if "[ToolCall]" not in line:
+                continue
+
+            match = pattern.match(line)
+            if match:
+                from datetime import datetime
+
+                timestamp_str = match.group(1)
+                timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f").timestamp()
+                tool_name = match.group(2)
+                session_id = match.group(3)
+
+                events.append(
+                    {
+                        "timestamp": timestamp,
+                        "tool_name": tool_name,
+                        "session_id": session_id,
+                        "line": line,
+                    }
+                )
+
+        return events
+
+    def load_subagent_start_events(self) -> List[Dict[str, Any]]:
+        try:
+            with open(self.file_path, encoding="utf-8") as f:
+                return self._parse_subagent_start_events(f)
+        except FileNotFoundError:
+            return []
+        except UnicodeDecodeError:
+            with open(self.file_path, encoding="gbk") as f:
+                return self._parse_subagent_start_events(f)
+
+    def _parse_subagent_start_events(self, f) -> List[Dict[str, Any]]:
+        events: List[Dict[str, Any]] = []
+        pattern = re.compile(
+            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\s+"
+            r"\[\d+\]\s+INFO\s+[^:]+:\d+:\s+"
+            r"\[Subagent\]\s+Starting\s+execution,\s+task_id=(subagent_\w+)"
+        )
+
+        for line in f:
+            line = line.strip()
+            if "[Subagent]" not in line or "Starting execution" not in line:
+                continue
+
+            match = pattern.match(line)
+            if match:
+                from datetime import datetime
+
+                timestamp_str = match.group(1)
+                timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f").timestamp()
+                task_id = match.group(2)
+
+                events.append(
+                    {
+                        "timestamp": timestamp,
+                        "task_id": task_id,
+                        "line": line,
+                    }
+                )
+
+        return events
+
+    def load_spawn_subagent_calls(self) -> Dict[str, List[Tuple[str, float]]]:
+        try:
+            with open(self.file_path, encoding="utf-8") as f:
+                return self._parse_spawn_subagent_calls(f)
+        except FileNotFoundError:
+            return {}
+        except UnicodeDecodeError:
+            with open(self.file_path, encoding="gbk") as f:
+                return self._parse_spawn_subagent_calls(f)
+
+    def load_subagent_starts(self) -> Dict[str, Tuple[float, float]]:
+        try:
+            with open(self.file_path, encoding="utf-8") as f:
+                return self._parse_subagent_starts(f)
+        except FileNotFoundError:
+            return {}
+        except UnicodeDecodeError:
+            with open(self.file_path, encoding="gbk") as f:
+                return self._parse_subagent_starts(f)
+
+    def _parse_subagent_starts(self, f) -> Dict[str, Tuple[float, float]]:
+        starts: Dict[str, Tuple[float, float]] = {}
+        start_pattern = re.compile(
+            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\s+"
+            r"\[\d+\]\s+INFO\s+[^:]+:\d+:\s+"
+            r"\[Subagent\]\s+Starting\s+execution,\s+task_id=(subagent_\w+)"
+        )
+        end_pattern = re.compile(
+            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\s+"
+            r"\[\d+\]\s+INFO\s+[^:]+:\d+:\s+"
+            r"\[Subagent\]\s+Execution\s+completed,\s+task_id=(subagent_\w+)"
+        )
+
+        for line in f:
+            line = line.strip()
+            if "[Subagent]" not in line:
+                continue
+
+            start_match = start_pattern.match(line)
+            if start_match:
+                from datetime import datetime
+
+                timestamp_str = start_match.group(1)
+                timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f").timestamp()
+                task_id = start_match.group(2)
+                starts[task_id] = (timestamp, 0.0)
+
+            end_match = end_pattern.match(line)
+            if end_match:
+                from datetime import datetime
+
+                timestamp_str = end_match.group(1)
+                timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f").timestamp()
+                task_id = end_match.group(2)
+                if task_id in starts:
+                    starts[task_id] = (starts[task_id][0], timestamp)
+
+        return starts
+
+    def _parse_spawn_subagent_calls(self, f) -> Dict[str, List[Tuple[str, float]]]:
+        calls: Dict[str, List[Tuple[str, float]]] = {}
+        pattern = re.compile(
+            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\s+"
+            r"\[\d+\]\s+INFO\s+[^:]+:\d+:\s+"
+            r"\[ToolCall\]\s+tool=spawn_subagent\s+"
+            r"session=(\S+)"
+        )
+
+        for line in f:
+            line = line.strip()
+            if "spawn_subagent" not in line:
+                continue
+
+            match = pattern.match(line)
+            if match:
+                from datetime import datetime
+
+                timestamp_str = match.group(1)
+                timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f").timestamp()
+                parent_session = match.group(2)
+
+                task_id = self._extract_task_id_from_line(line)
+                if task_id and parent_session:
+                    if parent_session not in calls:
+                        calls[parent_session] = []
+                    calls[parent_session].append((task_id, timestamp))
+
+        return calls
+
+    def _extract_task_id_from_line(self, line: str) -> Optional[str]:
+        task_pattern = re.search(r"task_id=(subagent_\w+)", line)
+        if task_pattern:
+            return task_pattern.group(1)
+
+        starting_pattern = re.search(
+            r"\[Subagent\]\s+Starting\s+execution,\s+task_id=(subagent_\w+)", line
+        )
+        if starting_pattern:
+            return starting_pattern.group(1)
+
+        return None
 
     def _parse_log_file(self, f) -> List[Dict[str, Any]]:
         traces: List[Dict[str, Any]] = []

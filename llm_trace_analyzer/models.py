@@ -13,6 +13,8 @@ class LLMRequest:
     body: Dict[str, Any]
     messages: List[Dict[str, Any]] = field(default_factory=list)
     tools: List[Dict[str, Any]] = field(default_factory=list)
+    source: str = "parent"
+    source_label: str = ""
 
 
 @dataclass
@@ -24,6 +26,16 @@ class LLMResponse:
     content: str = ""
     reasoning_content: str = ""
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+    source: str = "parent"
+    source_label: str = ""
+
+
+@dataclass
+class SubagentInfo:
+    task_id: str
+    session_id: str
+    start_time: float = 0.0
+    end_time: float = 0.0
 
 
 @dataclass
@@ -35,6 +47,8 @@ class LLMChain:
     start_time: float = 0.0
     end_time: float = 0.0
     total_iterations: int = 0
+    subagents: List[SubagentInfo] = field(default_factory=list)
+    is_subagent: bool = False
 
 
 @dataclass

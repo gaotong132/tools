@@ -34,6 +34,7 @@ HTML_TEMPLATE = """
         .label.response {{ background: #e8f5e9; color: #388e3c; }}
         .label.tool {{ background: #fff3e0; color: #f57c00; }}
         .label.reasoning {{ background: #fce4ec; color: #c2185b; }}
+        .label.subagent {{ background: #f3e5f5; color: #7b1fa2; }}
         .collapsible {{ cursor: pointer; padding: 8px 12px; background: #e0e0e0; border-radius: 4px; margin-bottom: 8px; }}
         .collapsible:hover {{ background: #d0d0d0; }}
         .collapsible-content {{ display: none; }}
@@ -135,6 +136,7 @@ ITERATION_TEMPLATE = """
 REQUEST_TEMPLATE = """
 <div>
     <span class="label">REQUEST</span>
+    <span class="label {source_class}">{source_label}</span>
     <span class="timestamp">{timestamp}</span>
     <span class="char-count">{request_chars} chars</span>
     {system_prompt_html}
@@ -167,6 +169,7 @@ SYSTEM_PROMPT_TEMPLATE = """
 RESPONSE_TEMPLATE = """
 <div style="margin-top: 15px;">
     <span class="label response">RESPONSE</span>
+    <span class="label {source_class}">{source_label}</span>
     <span class="timestamp">{timestamp}</span>
     <span class="char-count">{response_chars} chars</span>
     {reasoning_html}
@@ -306,6 +309,7 @@ SESSION_DETAIL_TEMPLATE = """
         .label.response {{ background: #e8f5e9; color: #388e3c; }}
         .label.tool {{ background: #fff3e0; color: #f57c00; }}
         .label.reasoning {{ background: #fce4ec; color: #c2185b; }}
+        .label.subagent {{ background: #f3e5f5; color: #7b1fa2; }}
         .collapsible {{ cursor: pointer; padding: 8px 12px; background: #e0e0e0; border-radius: 4px; margin-bottom: 8px; }}
         .collapsible:hover {{ background: #d0d0d0; }}
         .collapsible-content {{ display: none; }}

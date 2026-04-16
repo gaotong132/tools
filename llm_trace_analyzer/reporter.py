@@ -18,6 +18,7 @@ from .templates import (
     RESPONSE_TEMPLATE,
     SESSION_DETAIL_TEMPLATE,
     SESSION_ROW_TEMPLATE,
+    SYSTEM_PROMPT_TEMPLATE,
     TOOL_CALLS_TEMPLATE,
 )
 
@@ -138,25 +139,23 @@ class HTMLReporter:
 
         return "\n".join(iterations_parts)
 
-def _generate_request_html(self, request: LLMRequest) -> str:
-        messages_json = json.dumps(request.messages, indent=2, ensure_ascii=False)
-        tools_json = json.dumps(request.tools, indent=2, ensure_ascii=False)
-        request_chars = len(messages_json) + len(tools_json)
-        messages_tools_chars = len(messages_json) + len(tools_json)
-        
-        messages_html = self._make_json_block(request.messages)
-        tools_html = self._make_json_block(request.tools)
-        timestamp_str = self._format_timestamp(request.timestamp)
+    def _generate_request_html(self, request: LLMRequest) -> str:
+        system_prompt_html = ""
+        system_prompt_chars = 0
+        other_messages = []
 
-        return REQUEST_TEMPLATE.format(
-            timestamp=timestamp_str,
-            request_chars=request_chars,
-            message_count=len(request.messages),
-            tool_count=len(request.tools),
-            messages_tools_chars=messages_tools_chars,
-            messages_html=messages_html,
-            tools_html=tools_html,
-        )
+        for msg in request.messages:
+            if msg.get("role") == "system" and not system_prompt_html:
+                content = msg.get("content", "")
+                if content:
+                    system_prompt_chars = len(content)
+                    content_id = self._next_id()
+                    escaped_content = html.escape(content)
+                    system_prompt_html = SYSTEM_PROMPT_TEMPLATE.format(
+                        content_id=content_id,
+                        system_prompt=escaped_content,
+                        char_count=system_prompt_chars,
+                    )
             else:
                 other_messages.append(msg)
 
@@ -177,6 +176,8 @@ def _generate_request_html(self, request: LLMRequest) -> str:
         return REQUEST_TEMPLATE.format(
             timestamp=timestamp_str,
             request_chars=request_chars,
+            source_class="subagent" if request.source == "subagent" else "",
+            source_label=request.source_label,
             system_prompt_html=system_prompt_html,
             message_count=len(request.messages),
             tool_count=len(request.tools),
@@ -228,6 +229,8 @@ def _generate_request_html(self, request: LLMRequest) -> str:
         return RESPONSE_TEMPLATE.format(
             timestamp=timestamp_str,
             response_chars=response_chars,
+            source_class="subagent" if response.source == "subagent" else "",
+            source_label=response.source_label,
             reasoning_html=reasoning_html,
             content_html=content_html,
             tool_calls_html=tool_calls_html,
