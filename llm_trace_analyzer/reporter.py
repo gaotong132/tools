@@ -1,5 +1,6 @@
 """HTML报告生成器"""
 
+import html
 import json
 from datetime import datetime
 from pathlib import Path
@@ -75,14 +76,12 @@ class HTMLReporter:
         detail_file = report_dir / f"session_{short_id}.html"
 
         iterations_html = self._generate_iterations_html(chain)
-        total_pages = max(1, (chain.total_iterations + 4) // 5)
 
         html = SESSION_DETAIL_TEMPLATE.format(
             session_id_short=short_id,
             session_id=chain.session_id,
             model_name=chain.model_name,
             total_iterations=chain.total_iterations,
-            total_pages=total_pages,
             start_time=self._format_timestamp(chain.start_time),
             end_time=self._format_timestamp(chain.end_time),
             iterations_html=iterations_html,
@@ -162,7 +161,8 @@ class HTMLReporter:
         )
 
     def _format_json(self, obj) -> str:
-        return json.dumps(obj, indent=2, ensure_ascii=False)
+        json_str = json.dumps(obj, indent=2, ensure_ascii=False)
+        return html.escape(json_str)
 
     def _format_timestamp(self, timestamp: float) -> str:
         if timestamp == 0:

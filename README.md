@@ -91,6 +91,16 @@ analyzer.run(output_path="report.html", verbose=True)
 
 分析LLM_IO_TRACE日志，重建完整请求/响应链路并生成可视化报告。
 
+**前置要求：**
+
+OfficeClaw 需要开启 DEBUG 级别日志才能记录 `LLM_IO_TRACE`。在 OfficeClaw 安装目录下的 `.env` 文件中添加：
+
+```bash
+LOG_LEVEL=debug
+```
+
+Windows 默认路径：`<OfficeClaw安装目录>\.env`（如 `C:\Users\<用户名>\AppData\Local\Programs\OfficeClaw\.env`）
+
 **功能特性：**
 - 解析 `app.log` 中的 `LLM_IO_TRACE` 日志
 - 合并分片请求体（body_part 1/N → N/N）

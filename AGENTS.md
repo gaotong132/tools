@@ -48,3 +48,4 @@ Parses `[LLM_IO_TRACE]` logs:
 
 - **Activate venv first** - dev tools won't work without it
 - **Windows paths:** Use backslashes in PowerShell/CMD
+- **Wait for user confirmation before git push** - always ask user to confirm before pushing commits
