@@ -40,9 +40,7 @@ Homepage = "https://github.com/yourusername/python-tools"
 Repository = "https://github.com/yourusername/python-tools"
 
 [project.scripts]
-agent-history-analyzer = "agent_history_analyzer.main:main"
 ha = "agent_history_analyzer.main:main"
-llm-trace-analyzer = "llm_trace_analyzer.main:main"
 lt = "llm_trace_analyzer.main:main"
 
 [tool.setuptools.packages.find]

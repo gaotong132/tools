@@ -45,4 +45,6 @@ Thumbs.db
 .env.local
 
 # Gen
-*report.html
+*_report/
+*_output/
+*.html
