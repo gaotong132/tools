@@ -136,9 +136,11 @@ REQUEST_TEMPLATE = """
 <div>
     <span class="label">REQUEST</span>
     <span class="timestamp">{timestamp}</span>
+    <span class="char-count">{request_chars} chars</span>
     {system_prompt_html}
     <div class="collapsible" onclick="toggleCollapsible(this)">
         <span class="toggle-icon">&#9654;</span> Messages ({message_count}) + Tools ({tool_count})
+        <span class="char-count">{messages_tools_chars} chars</span>
     </div>
     <div class="collapsible-content">
         {messages_html}
@@ -150,6 +152,7 @@ REQUEST_TEMPLATE = """
 SYSTEM_PROMPT_TEMPLATE = """
 <div style="margin-top: 10px;">
     <span class="label" style="background: #ffe0b2; color: #e65100;">System Prompt</span>
+    <span class="char-count">{char_count} chars</span>
     <div class="collapsible" onclick="toggleCollapsible(this)">
         <span class="toggle-icon">&#9654;</span> Show system prompt
     </div>
@@ -166,6 +169,7 @@ RESPONSE_TEMPLATE = """
 <div style="margin-top: 15px;">
     <span class="label response">RESPONSE</span>
     <span class="timestamp">{timestamp}</span>
+    <span class="char-count">{response_chars} chars</span>
     {reasoning_html}
     {content_html}
     {tool_calls_html}
@@ -175,6 +179,7 @@ RESPONSE_TEMPLATE = """
 REASONING_TEMPLATE = """
 <div style="margin-top: 10px;">
     <span class="label reasoning">Reasoning</span>
+    <span class="char-count">{char_count} chars</span>
     <div class="json-container">
         <button class="copy-btn" onclick="copyToClipboard(this, '{content_id}')">Copy</button>
         <pre class="json-content" id="{content_id}">{reasoning_content}</pre>
@@ -185,6 +190,7 @@ REASONING_TEMPLATE = """
 CONTENT_TEMPLATE = """
 <div style="margin-top: 10px;">
     <span class="label">Content</span>
+    <span class="char-count">{char_count} chars</span>
     <div class="json-container">
         <button class="copy-btn" onclick="copyToClipboard(this, '{content_id}')">Copy</button>
         <pre class="json-content" id="{content_id}">{content}</pre>
@@ -195,6 +201,7 @@ CONTENT_TEMPLATE = """
 TOOL_CALLS_TEMPLATE = """
 <div style="margin-top: 10px;">
     <span class="label tool">Tool Calls ({tool_count})</span>
+    <span class="char-count">{char_count} chars</span>
     <div class="json-container">
         <button class="copy-btn" onclick="copyToClipboard(this, '{content_id}')">Copy</button>
         <pre class="json-content" id="{content_id}">{tool_calls_json}</pre>

@@ -141,20 +141,29 @@ class HTMLReporter:
 
     def _generate_request_html(self, request: LLMRequest) -> str:
         system_prompt_html = ""
+        system_prompt_chars = 0
         other_messages = []
 
         for msg in request.messages:
             if msg.get("role") == "system" and not system_prompt_html:
                 content = msg.get("content", "")
                 if content:
+                    system_prompt_chars = len(content)
                     content_id = self._next_id()
                     escaped_content = html.escape(content)
                     system_prompt_html = SYSTEM_PROMPT_TEMPLATE.format(
                         content_id=content_id,
                         system_prompt=escaped_content,
+                        char_count=system_prompt_chars,
                     )
             else:
                 other_messages.append(msg)
+
+        messages_json = json.dumps(
+            other_messages if other_messages else request.messages, indent=2, ensure_ascii=False
+        )
+        tools_json = json.dumps(request.tools, indent=2, ensure_ascii=False)
+        messages_tools_chars = len(messages_json) + len(tools_json)
 
         messages_html = self._make_json_block(
             other_messages if other_messages else request.messages
@@ -162,11 +171,15 @@ class HTMLReporter:
         tools_html = self._make_json_block(request.tools)
         timestamp_str = self._format_timestamp(request.timestamp)
 
+        request_chars = system_prompt_chars + messages_tools_chars
+
         return REQUEST_TEMPLATE.format(
             timestamp=timestamp_str,
+            request_chars=request_chars,
             system_prompt_html=system_prompt_html,
             message_count=len(request.messages),
             tool_count=len(request.tools),
+            messages_tools_chars=messages_tools_chars,
             messages_html=messages_html,
             tools_html=tools_html,
         )
@@ -174,39 +187,55 @@ class HTMLReporter:
     def _generate_response_html(self, response: LLMResponse) -> str:
         timestamp_str = self._format_timestamp(response.timestamp)
 
+        reasoning_chars = 0
         reasoning_html = ""
         if response.reasoning_content:
+            reasoning_chars = len(response.reasoning_content)
             content_id = self._next_id()
             escaped_content = html.escape(response.reasoning_content)
             reasoning_html = REASONING_TEMPLATE.format(
                 content_id=content_id,
                 reasoning_content=escaped_content,
+                char_count=reasoning_chars,
             )
 
+        content_chars = 0
         content_html = ""
         if response.content:
+            content_chars = len(response.content)
             content_id = self._next_id()
             escaped_content = html.escape(response.content)
             content_html = CONTENT_TEMPLATE.format(
                 content_id=content_id,
                 content=escaped_content,
+                char_count=content_chars,
             )
 
+        tool_calls_chars = 0
         tool_calls_html = ""
         if response.tool_calls:
+            tool_calls_json = json.dumps(response.tool_calls, indent=2, ensure_ascii=False)
+            tool_calls_chars = len(tool_calls_json)
             tool_calls_html = self._make_json_block(
-                response.tool_calls, tool_count=len(response.tool_calls)
+                response.tool_calls,
+                tool_count=len(response.tool_calls),
+                char_count=tool_calls_chars,
             )
+
+        response_chars = reasoning_chars + content_chars + tool_calls_chars
 
         return RESPONSE_TEMPLATE.format(
             timestamp=timestamp_str,
+            response_chars=response_chars,
             reasoning_html=reasoning_html,
             content_html=content_html,
             tool_calls_html=tool_calls_html,
         )
 
-    def _make_json_block(self, obj, tool_count: int = 0) -> str:
+    def _make_json_block(self, obj, tool_count: int = 0, char_count: int = 0) -> str:
         json_str = json.dumps(obj, indent=2, ensure_ascii=False)
+        if char_count == 0:
+            char_count = len(json_str)
         content_id = self._next_id()
         escaped_content = html.escape(json_str)
 
@@ -214,6 +243,7 @@ class HTMLReporter:
             return TOOL_CALLS_TEMPLATE.format(
                 content_id=content_id,
                 tool_count=tool_count,
+                char_count=char_count,
                 tool_calls_json=escaped_content,
             )
         return JSON_BLOCK_TEMPLATE.format(content_id=content_id, content=escaped_content)
