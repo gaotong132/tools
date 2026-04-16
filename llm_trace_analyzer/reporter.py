@@ -17,6 +17,7 @@ from .templates import (
     RESPONSE_TEMPLATE,
     SESSION_DETAIL_TEMPLATE,
     SESSION_ROW_TEMPLATE,
+    SYSTEM_PROMPT_TEMPLATE,
     TOOL_CALLS_TEMPLATE,
 )
 
@@ -130,12 +131,31 @@ class HTMLReporter:
         return "\n".join(iterations_parts)
 
     def _generate_request_html(self, request: LLMRequest) -> str:
-        messages_html = self._make_json_block(request.messages)
+        system_prompt_html = ""
+        other_messages = []
+
+        for msg in request.messages:
+            if msg.get("role") == "system" and not system_prompt_html:
+                content = msg.get("content", "")
+                if content:
+                    content_id = self._next_id()
+                    escaped_content = html.escape(content)
+                    system_prompt_html = SYSTEM_PROMPT_TEMPLATE.format(
+                        content_id=content_id,
+                        system_prompt=escaped_content,
+                    )
+            else:
+                other_messages.append(msg)
+
+        messages_html = self._make_json_block(
+            other_messages if other_messages else request.messages
+        )
         tools_html = self._make_json_block(request.tools)
         timestamp_str = self._format_timestamp(request.timestamp)
 
         return REQUEST_TEMPLATE.format(
             timestamp=timestamp_str,
+            system_prompt_html=system_prompt_html,
             message_count=len(request.messages),
             tool_count=len(request.tools),
             messages_html=messages_html,
