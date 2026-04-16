@@ -175,14 +175,9 @@ RESPONSE_TEMPLATE = """
 REASONING_TEMPLATE = """
 <div style="margin-top: 10px;">
     <span class="label reasoning">Reasoning</span>
-    <div class="collapsible" onclick="toggleCollapsible(this)">
-        <span class="toggle-icon">&#9654;</span> Show reasoning content
-    </div>
-    <div class="collapsible-content">
-        <div class="json-container">
-            <button class="copy-btn" onclick="copyToClipboard(this, '{content_id}')">Copy</button>
-            <pre class="json-content" id="{content_id}">{reasoning_content}</pre>
-        </div>
+    <div class="json-container">
+        <button class="copy-btn" onclick="copyToClipboard(this, '{content_id}')">Copy</button>
+        <pre class="json-content" id="{content_id}">{reasoning_content}</pre>
     </div>
 </div>
 """
