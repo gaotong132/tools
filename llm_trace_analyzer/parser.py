@@ -159,6 +159,11 @@ class TraceParser:
         if not traces:
             return ""
 
+        with_seq = [t for t in traces if t.get("reasoning_seq") is not None]
+        if with_seq:
+            sorted_traces = sorted(with_seq, key=lambda t: t["reasoning_seq"])
+            return "".join(str(t["body_str"]) for t in sorted_traces)
+
         merged_body = self._merge_body_parts(traces)
         if not merged_body:
             return ""

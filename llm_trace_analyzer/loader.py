@@ -33,6 +33,7 @@ class LogLoader:
             r"iteration=(\d+)\s+"
             r"model_name='([^']*)'\s+"
             r"(?:body_part=(\d+/\d+)\s+)?"
+            r"(?:reasoning_seq=(\d+)\s+)?"
             r"body=(.*)$"
         )
 
@@ -60,12 +61,17 @@ class LogLoader:
         iteration = int(match.group(5))
         model_name = match.group(6)
         body_part_str = match.group(7)
-        body_str = match.group(8)
+        reasoning_seq_str = match.group(8)
+        body_str = match.group(9)
 
         body_part = None
         if body_part_str:
             parts = body_part_str.split("/")
             body_part = (int(parts[0]), int(parts[1]))
+
+        reasoning_seq = None
+        if reasoning_seq_str:
+            reasoning_seq = int(reasoning_seq_str)
 
         return {
             "timestamp": timestamp,
@@ -75,6 +81,7 @@ class LogLoader:
             "iteration": iteration,
             "model_name": model_name,
             "body_part": body_part,
+            "reasoning_seq": reasoning_seq,
             "body_str": body_str,
         }
 
