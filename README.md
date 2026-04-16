@@ -7,14 +7,7 @@ Python工具集合项目
 ```
 tools/
 ├── agent_history_analyzer/    # Agent历史分析工具包
-│   ├── __init__.py            # 包入口
-│   ├── main.py                # CLI入口
-│   ├── loader.py              # JSON加载器
-│   ├── analyzer.py            # 数据分析器
-│   ├── reporter.py            # HTML报告生成器
-│   ├── templates.py           # HTML模板
-│   ├── constants.py           # 常量定义
-│   └── models.py              # 数据类定义
+├── llm_trace_analyzer/        # LLM请求链路分析工具包
 ├── venv/                      # 虚拟环境
 ├── pyproject.toml             # 项目配置
 └── README.md                  # 项目说明
@@ -40,8 +33,10 @@ source venv/bin/activate
 pip install -e .
 
 # 4. 运行工具
-agent-history-analyzer              # 自动分析最新会话
-agent-history-analyzer <json_file>  # 分析指定文件
+ha                                  # 分析Agent历史（自动查找）
+ha <json_file> -o report.html       # 分析指定文件
+lt                                  # 分析LLM请求链路（自动查找）
+lt <log_file> -o trace_report.html  # 分析指定日志
 ```
 
 ## Agent History Analyzer
@@ -91,6 +86,52 @@ from agent_history_analyzer import AgentHistoryAnalyzer
 
 analyzer = AgentHistoryAnalyzer("history.json")
 analyzer.run(output_path="report.html", verbose=True)
+```
+
+## LLM Trace Analyzer
+
+分析LLM_IO_TRACE日志，重建完整请求/响应链路并生成可视化报告。
+
+**功能特性：**
+- 解析 `app.log` 中的 `LLM_IO_TRACE` 日志
+- 合并分片请求体（body_part 1/N → N/N）
+- 关联请求（messages+tools）与响应（content+tool_calls）
+- 支持按 session 筛选
+
+**使用方法：**
+
+```bash
+# 自动分析最新日志
+lt
+
+# 分析指定日志文件
+lt <log_file_path>
+
+# 指定输出文件
+lt <log_file_path> -o my_trace_report.html
+
+# 筛选特定 session
+lt <log_file_path> --session <session_id>
+
+# 显示详细摘要
+lt -v
+```
+
+**报告内容：**
+- **统计概览**：session 数量、请求次数、响应次数、迭代次数
+- **每个 Session**：
+  - 按 iteration 展示请求→响应链路
+  - 完整 JSON 展开：messages、tools、response
+  - reasoning_content（推理过程）
+  - tool_calls 详情
+
+**作为库使用：**
+
+```python
+from llm_trace_analyzer import LLMTraceAnalyzer
+
+analyzer = LLMTraceAnalyzer("app.log")
+analyzer.run(output_path="trace_report.html", verbose=True)
 ```
 
 ## 添加新工具

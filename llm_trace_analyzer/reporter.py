@@ -1,0 +1,176 @@
+"""HTML报告生成器"""
+
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import List
+
+from .models import AnalysisResult, LLMChain, LLMRequest, LLMResponse
+from .templates import (
+    CONTENT_TEMPLATE,
+    EMPTY_SESSION_TEMPLATE,
+    INDEX_TEMPLATE,
+    ITERATION_DETAIL_TEMPLATE,
+    REASONING_TEMPLATE,
+    REQUEST_TEMPLATE,
+    RESPONSE_TEMPLATE,
+    SESSION_DETAIL_TEMPLATE,
+    SESSION_ROW_TEMPLATE,
+    TOOL_CALLS_TEMPLATE,
+)
+
+
+class HTMLReporter:
+    def __init__(self, log_file_path: str):
+        self.log_file_path = log_file_path
+
+    def generate(self, result: AnalysisResult, output_path: str) -> None:
+        output_dir = Path(output_path).parent
+        output_name = Path(output_path).stem
+
+        report_dir = output_dir / output_name
+        report_dir.mkdir(parents=True, exist_ok=True)
+
+        self._generate_index(result, report_dir)
+
+        for chain in result.sorted_sessions:
+            self._generate_session_detail(chain, report_dir)
+
+        print(f"Report generated in: {report_dir}/")
+        print(f"  - index.html (session list)")
+        for chain in result.sorted_sessions:
+            short_id = self._short_session_id(chain.session_id)
+            print(f"  - session_{short_id}.html")
+
+    def _generate_index(self, result: AnalysisResult, report_dir: Path) -> None:
+        stats = result.statistics
+
+        session_rows: List[str] = []
+        for chain in result.sorted_sessions:
+            short_id = self._short_session_id(chain.session_id)
+            detail_file = f"session_{short_id}.html"
+
+            row = SESSION_ROW_TEMPLATE.format(
+                session_id_short=short_id,
+                session_id=chain.session_id,
+                model_name=chain.model_name,
+                total_iterations=chain.total_iterations,
+                start_time=self._format_timestamp(chain.start_time),
+                end_time=self._format_timestamp(chain.end_time),
+                detail_file=detail_file,
+            )
+            session_rows.append(row)
+
+        index_html = INDEX_TEMPLATE.format(
+            total_sessions=stats.total_sessions,
+            total_requests=stats.total_requests,
+            total_iterations=stats.total_iterations,
+            session_rows="\n".join(session_rows),
+        )
+
+        with open(report_dir / "index.html", "w", encoding="utf-8") as f:
+            f.write(index_html)
+
+    def _generate_session_detail(self, chain: LLMChain, report_dir: Path) -> None:
+        short_id = self._short_session_id(chain.session_id)
+        detail_file = report_dir / f"session_{short_id}.html"
+
+        iterations_html = self._generate_iterations_html(chain)
+
+        html = SESSION_DETAIL_TEMPLATE.format(
+            session_id_short=short_id,
+            session_id=chain.session_id,
+            model_name=chain.model_name,
+            total_iterations=chain.total_iterations,
+            start_time=self._format_timestamp(chain.start_time),
+            end_time=self._format_timestamp(chain.end_time),
+            iterations_html=iterations_html,
+        )
+
+        with open(detail_file, "w", encoding="utf-8") as f:
+            f.write(html)
+
+    def _short_session_id(self, session_id: str) -> str:
+        if not session_id:
+            return "unknown"
+        parts = session_id.split("_")
+        if len(parts) >= 2:
+            return parts[-1][:12]
+        return session_id[:12]
+
+    def _generate_iterations_html(self, chain: LLMChain) -> str:
+        max_iterations = max(len(chain.requests), len(chain.responses))
+        iterations_parts: List[str] = []
+
+        for i in range(max_iterations):
+            iteration_num = i + 1
+
+            request_html = ""
+            if i < len(chain.requests):
+                request_html = self._generate_request_html(chain.requests[i])
+
+            response_html = ""
+            if i < len(chain.responses):
+                response_html = self._generate_response_html(chain.responses[i])
+
+            iteration_html = ITERATION_DETAIL_TEMPLATE.format(
+                iteration_num=iteration_num,
+                request_html=request_html,
+                response_html=response_html,
+            )
+            iterations_parts.append(iteration_html)
+
+        return "\n".join(iterations_parts)
+
+    def _generate_request_html(self, request: LLMRequest) -> str:
+        messages_json = self._format_json(request.messages)
+        tools_json = self._format_json(request.tools)
+        timestamp_str = self._format_timestamp(request.timestamp)
+
+        return REQUEST_TEMPLATE.format(
+            timestamp=timestamp_str,
+            message_count=len(request.messages),
+            tool_count=len(request.tools),
+            messages_json=messages_json,
+            tools_json=tools_json,
+        )
+
+    def _generate_response_html(self, response: LLMResponse) -> str:
+        timestamp_str = self._format_timestamp(response.timestamp)
+
+        reasoning_html = ""
+        if response.reasoning_content:
+            reasoning_html = REASONING_TEMPLATE.format(
+                reasoning_content=self._escape_html(response.reasoning_content)
+            )
+
+        content_html = ""
+        if response.content:
+            content_html = CONTENT_TEMPLATE.format(content=self._escape_html(response.content))
+
+        tool_calls_html = ""
+        if response.tool_calls:
+            tool_calls_html = TOOL_CALLS_TEMPLATE.format(
+                tool_count=len(response.tool_calls),
+                tool_calls_json=self._format_json(response.tool_calls),
+            )
+
+        return RESPONSE_TEMPLATE.format(
+            timestamp=timestamp_str,
+            reasoning_html=reasoning_html,
+            content_html=content_html,
+            tool_calls_html=tool_calls_html,
+        )
+
+    def _format_json(self, obj) -> str:
+        return json.dumps(obj, indent=2, ensure_ascii=False)
+
+    def _format_timestamp(self, timestamp: float) -> str:
+        if timestamp == 0:
+            return "N/A"
+        dt = datetime.fromtimestamp(timestamp)
+        return dt.strftime("%H:%M:%S")
+
+    def _escape_html(self, text: str) -> str:
+        return text.replace("<", "&lt;").replace(">", "&gt;")

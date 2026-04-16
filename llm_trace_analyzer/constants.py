@@ -1,0 +1,14 @@
+"""常量定义模块"""
+
+from enum import Enum
+
+
+class TraceEventType(Enum):
+    STREAM_REQUEST = "stream_request"
+    STREAM_OUTPUT = "stream_output"
+    REASONING_DELTA = "reasoning_delta"
+
+
+DEFAULT_LOGS_DIR = ".office-claw/.jiuwenclaw/.logs"
+DEFAULT_LOG_FILE = "app.log"
+TRACE_MARKER = "[LLM_IO_TRACE]"

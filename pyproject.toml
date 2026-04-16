@@ -42,10 +42,12 @@ Repository = "https://github.com/yourusername/python-tools"
 [project.scripts]
 agent-history-analyzer = "agent_history_analyzer.main:main"
 ha = "agent_history_analyzer.main:main"
+llm-trace-analyzer = "llm_trace_analyzer.main:main"
+lt = "llm_trace_analyzer.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agent_history_analyzer*"]
+include = ["agent_history_analyzer*", "llm_trace_analyzer*"]
 
 # LSP Configuration - Pyright (推荐用于 VS Code + Pylance)
 [tool.pyright]
