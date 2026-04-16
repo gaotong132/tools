@@ -137,6 +137,7 @@ REQUEST_TEMPLATE = """
     <span class="label">REQUEST</span>
     <span class="timestamp">{timestamp}</span>
     <span class="char-count">{request_chars} chars</span>
+    {system_prompt_html}
     <div class="collapsible" onclick="toggleCollapsible(this)">
         <span class="toggle-icon">&#9654;</span> Messages ({message_count}) + Tools ({tool_count})
         <span class="char-count">{messages_tools_chars} chars</span>
@@ -144,6 +145,17 @@ REQUEST_TEMPLATE = """
     <div class="collapsible-content">
         {messages_html}
         {tools_html}
+    </div>
+</div>
+"""
+
+SYSTEM_PROMPT_TEMPLATE = """
+<div style="margin-top: 10px;">
+    <span class="label" style="background: #ffe0b2; color: #e65100;">System Prompt</span>
+    <span class="char-count">{char_count} chars</span>
+    <div class="json-container">
+        <button class="copy-btn" onclick="copyToClipboard(this, '{content_id}')">Copy</button>
+        <pre class="json-content" id="{content_id}">{system_prompt}</pre>
     </div>
 </div>
 """
