@@ -141,13 +141,11 @@ class HTMLReporter:
 
         reasoning_html = ""
         if response.reasoning_content:
-            reasoning_html = REASONING_TEMPLATE.format(
-                reasoning_content=self._escape_html(response.reasoning_content)
-            )
+            reasoning_html = REASONING_TEMPLATE.format(reasoning_content=response.reasoning_content)
 
         content_html = ""
         if response.content:
-            content_html = CONTENT_TEMPLATE.format(content=self._escape_html(response.content))
+            content_html = CONTENT_TEMPLATE.format(content=response.content)
 
         tool_calls_html = ""
         if response.tool_calls:
@@ -171,6 +169,3 @@ class HTMLReporter:
             return "N/A"
         dt = datetime.fromtimestamp(timestamp)
         return dt.strftime("%H:%M:%S")
-
-    def _escape_html(self, text: str) -> str:
-        return text.replace("<", "&lt;").replace(">", "&gt;")

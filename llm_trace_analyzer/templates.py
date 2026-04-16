@@ -29,7 +29,7 @@ HTML_TEMPLATE = """
         .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; }}
         .iteration-content {{ padding: 15px; }}
         .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 15px; margin: 10px 0; }}
-        .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre; overflow-x: auto; overflow-y: auto; max-height: 400px; }}
+        .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre; overflow-x: auto; overflow-y: auto; max-height: 400px; width: 100%; resize: vertical; border: none; background: transparent; }}
         .label {{ display: inline-block; background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-right: 10px; }}
         .label.response {{ background: #e8f5e9; color: #388e3c; }}
         .label.tool {{ background: #fff3e0; color: #f57c00; }}
@@ -141,10 +141,10 @@ REQUEST_TEMPLATE = """
     </div>
     <div class="collapsible-content">
         <div class="json-container">
-            <div class="json-content">{messages_json}</div>
+            <textarea class="json-content" readonly>{messages_json}</textarea>
         </div>
         <div class="json-container">
-            <div class="json-content">{tools_json}</div>
+            <textarea class="json-content" readonly>{tools_json}</textarea>
         </div>
     </div>
 </div>
@@ -168,7 +168,7 @@ REASONING_TEMPLATE = """
     </div>
     <div class="collapsible-content">
         <div class="json-container">
-            <div class="json-content">{reasoning_content}</div>
+            <textarea class="json-content" readonly>{reasoning_content}</textarea>
         </div>
     </div>
 </div>
@@ -178,7 +178,7 @@ CONTENT_TEMPLATE = """
 <div style="margin-top: 10px;">
     <span class="label">Content</span>
     <div class="json-container">
-        <div class="json-content">{content}</div>
+        <textarea class="json-content" readonly>{content}</textarea>
     </div>
 </div>
 """
@@ -187,7 +187,7 @@ TOOL_CALLS_TEMPLATE = """
 <div style="margin-top: 10px;">
     <span class="label tool">Tool Calls ({tool_count})</span>
     <div class="json-container">
-        <div class="json-content">{tool_calls_json}</div>
+        <textarea class="json-content" readonly>{tool_calls_json}</textarea>
     </div>
 </div>
 """
@@ -280,7 +280,7 @@ SESSION_DETAIL_TEMPLATE = """
         .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; }}
         .iteration-content {{ padding: 15px; }}
         .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 15px; margin: 10px 0; }}
-        .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre; overflow-x: auto; overflow-y: auto; max-height: 400px; }}
+        .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre; overflow-x: auto; overflow-y: auto; max-height: 400px; width: 100%; resize: vertical; border: none; background: transparent; }}
         .label {{ display: inline-block; background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-right: 10px; }}
         .label.response {{ background: #e8f5e9; color: #388e3c; }}
         .label.tool {{ background: #fff3e0; color: #f57c00; }}
