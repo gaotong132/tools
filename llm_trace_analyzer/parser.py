@@ -38,14 +38,12 @@ class TraceParser:
     def _parse_session(
         self, session_id: str, traces: List[Dict[str, Any]]
     ) -> Tuple[List[LLMRequest], List[LLMResponse]]:
-        by_iteration: Dict[int, Dict[str, List[Dict[str, Any]]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
+        # 按 iteration 和事件类型分组
+        by_iteration: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
 
         for trace in traces:
             iteration = trace["iteration"]
-            event = trace["event"]
-            by_iteration[iteration][event].append(trace)
+            by_iteration[iteration].append(trace)
 
         requests: List[LLMRequest] = []
         responses: List[LLMResponse] = []
@@ -53,24 +51,91 @@ class TraceParser:
         for iteration in sorted(by_iteration.keys()):
             iter_traces = by_iteration[iteration]
 
-            if TraceEventType.STREAM_REQUEST.value in iter_traces:
-                req = self._parse_request(
-                    session_id, iteration, iter_traces[TraceEventType.STREAM_REQUEST.value]
-                )
-                if req:
-                    requests.append(req)
+            # 分离不同事件类型
+            request_traces = [t for t in iter_traces if t["event"] == TraceEventType.STREAM_REQUEST.value]
+            output_traces = [t for t in iter_traces if t["event"] == TraceEventType.STREAM_OUTPUT.value]
+            reasoning_traces = [t for t in iter_traces if t["event"] == TraceEventType.REASONING_DELTA.value]
 
-            if TraceEventType.STREAM_OUTPUT.value in iter_traces:
-                resp = self._parse_response(
-                    session_id,
-                    iteration,
-                    iter_traces.get(TraceEventType.STREAM_OUTPUT.value, []),
-                    iter_traces.get(TraceEventType.REASONING_DELTA.value, []),
-                )
-                if resp:
-                    responses.append(resp)
+            # 按 stream_request/stream_output 时间戳聚类（阈值 1 秒）
+            request_groups = self._group_by_timestamp(request_traces, threshold=1.0)
+            output_groups = self._group_by_timestamp(output_traces, threshold=1.0)
+
+            # reasoning_delta 按 seq 重置分组
+            reasoning_groups = self._group_by_seq_reset(reasoning_traces)
+
+            # 按 request/output 数量确定 iteration 数（应该是一致的）
+            num_iterations = len(request_groups)
+            if num_iterations != len(output_groups):
+                # 如果不一致，使用较大的数量
+                num_iterations = max(len(request_groups), len(output_groups))
+
+            for sub_iteration in range(num_iterations):
+                actual_iteration = iteration * 10 + sub_iteration
+
+                req_traces = request_groups[sub_iteration] if sub_iteration < len(request_groups) else []
+                out_traces = output_groups[sub_iteration] if sub_iteration < len(output_groups) else []
+
+                # 计算当前 output group 的中心时间
+                if out_traces:
+                    out_center = sum(t["timestamp"] for t in out_traces) / len(out_traces)
+                elif req_traces:
+                    # 如果没有 output，用 request 的结束时间作为参考
+                    out_center = max(t["timestamp"] for t in req_traces) + 30  # 预期 output 在 request 后约 30 秒
+                else:
+                    out_center = 0
+
+                # 找最接近的 reasoning group
+                reason_traces = []
+                if reasoning_groups:
+                    # 选择时间距离最近的 reasoning group
+                    best_group = None
+                    best_distance = float("inf")
+                    for rg in reasoning_groups:
+                        rg_center = sum(t["timestamp"] for t in rg) / len(rg)
+                        distance = abs(rg_center - out_center)
+                        if distance < best_distance:
+                            best_distance = distance
+                            best_group = rg
+                    if best_group and best_distance < 120:  # 最大允许 120 秒差距
+                        reason_traces = best_group
+
+                if req_traces:
+                    req = self._parse_request(session_id, actual_iteration, req_traces)
+                    if req:
+                        requests.append(req)
+
+                if out_traces or reason_traces:
+                    resp = self._parse_response(
+                        session_id,
+                        actual_iteration,
+                        out_traces,
+                        reason_traces,
+                    )
+                    if resp:
+                        responses.append(resp)
 
         return requests, responses
+
+    def _group_by_timestamp(
+        self, traces: List[Dict[str, Any]], threshold: float = 1.0
+    ) -> List[List[Dict[str, Any]]]:
+        """按时间戳聚类，同一 iteration 内时间差超过阈值的分开"""
+        if not traces:
+            return []
+
+        sorted_traces = sorted(traces, key=lambda t: t["timestamp"])
+        groups: List[List[Dict[str, Any]]] = []
+        current_group: List[Dict[str, Any]] = [sorted_traces[0]]
+
+        for trace in sorted_traces[1:]:
+            if trace["timestamp"] - current_group[-1]["timestamp"] > threshold:
+                groups.append(current_group)
+                current_group = [trace]
+            else:
+                current_group.append(trace)
+
+        groups.append(current_group)
+        return groups
 
     def _parse_request(
         self, session_id: str, iteration: int, traces: List[Dict[str, Any]]
@@ -161,8 +226,13 @@ class TraceParser:
 
         with_seq = [t for t in traces if t.get("reasoning_seq") is not None]
         if with_seq:
-            sorted_traces = sorted(with_seq, key=lambda t: t["reasoning_seq"])
-            return "".join(str(t["body_str"]) for t in sorted_traces)
+            # 按 seq 重置分组，再按 seq 排序合并
+            groups = self._group_by_seq_reset(with_seq)
+            merged_parts = []
+            for group in groups:
+                sorted_group = sorted(group, key=lambda t: t["reasoning_seq"])
+                merged_parts.append("".join(str(t["body_str"]) for t in sorted_group))
+            return "".join(merged_parts)
 
         merged_body = self._merge_body_parts(traces)
         if not merged_body:
@@ -173,3 +243,27 @@ class TraceParser:
             return body_dict.get("reasoning_content", "") or ""
         except json.JSONDecodeError:
             return ""
+
+    def _group_by_seq_reset(
+        self, traces: List[Dict[str, Any]]
+    ) -> List[List[Dict[str, Any]]]:
+        """按 reasoning_seq 重置分组：seq 从高变低说明是新的一组"""
+        if not traces:
+            return []
+
+        sorted_traces = sorted(traces, key=lambda t: t["timestamp"])
+        groups: List[List[Dict[str, Any]]] = []
+        current_group: List[Dict[str, Any]] = [sorted_traces[0]]
+
+        for trace in sorted_traces[1:]:
+            prev_seq = current_group[-1].get("reasoning_seq", 0)
+            curr_seq = trace.get("reasoning_seq", 0)
+            # seq 重置（从高变低）说明是新的一组
+            if curr_seq < prev_seq:
+                groups.append(current_group)
+                current_group = [trace]
+            else:
+                current_group.append(trace)
+
+        groups.append(current_group)
+        return groups
