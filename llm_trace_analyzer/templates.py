@@ -154,7 +154,7 @@ REQUEST_TEMPLATE = """
 SYSTEM_PROMPT_TEMPLATE = """
 <div style="margin-top: 10px;">
     <div class="collapsible" onclick="toggleCollapsible(this)">
-        <span class="toggle-icon">&#9654;</span> Show system prompt
+        <span class="toggle-icon">&#9654;</span> System
         <span class="char-count">{char_count} chars</span>
     </div>
     <div class="collapsible-content">
