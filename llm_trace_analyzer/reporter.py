@@ -159,19 +159,16 @@ class HTMLReporter:
             else:
                 other_messages.append(msg)
 
-        messages_json = json.dumps(
-            other_messages if other_messages else request.messages, indent=2, ensure_ascii=False
-        )
+        messages_json = json.dumps(other_messages, indent=2, ensure_ascii=False)
         tools_json = json.dumps(request.tools, indent=2, ensure_ascii=False)
-        messages_tools_chars = len(messages_json) + len(tools_json)
+        messages_chars = len(messages_json)
+        tools_chars = len(tools_json)
 
-        messages_html = self._make_json_block(
-            other_messages if other_messages else request.messages
-        )
+        messages_html = self._make_json_block(other_messages)
         tools_html = self._make_json_block(request.tools)
         timestamp_str = self._format_timestamp(request.timestamp)
 
-        request_chars = system_prompt_chars + messages_tools_chars
+        request_chars = system_prompt_chars + messages_chars + tools_chars
 
         return REQUEST_TEMPLATE.format(
             timestamp=timestamp_str,
@@ -179,9 +176,10 @@ class HTMLReporter:
             source_class="subagent" if request.source == "subagent" else "",
             source_label=request.source_label,
             system_prompt_html=system_prompt_html,
-            message_count=len(request.messages),
+            message_count=len(other_messages),
             tool_count=len(request.tools),
-            messages_tools_chars=messages_tools_chars,
+            messages_chars=messages_chars,
+            tools_chars=tools_chars,
             messages_html=messages_html,
             tools_html=tools_html,
         )

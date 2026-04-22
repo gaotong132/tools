@@ -140,13 +140,23 @@ REQUEST_TEMPLATE = """
     <span class="timestamp">{timestamp}</span>
     <span class="char-count">{request_chars} chars</span>
     {system_prompt_html}
-    <div class="collapsible" onclick="toggleCollapsible(this)">
-        <span class="toggle-icon">&#9654;</span> Messages ({message_count}) + Tools ({tool_count})
-        <span class="char-count">{messages_tools_chars} chars</span>
+    <div style="margin-top: 10px;">
+        <div class="collapsible" onclick="toggleCollapsible(this)">
+            <span class="toggle-icon">&#9654;</span> Messages ({message_count})
+            <span class="char-count">{messages_chars} chars</span>
+        </div>
+        <div class="collapsible-content">
+            {messages_html}
+        </div>
     </div>
-    <div class="collapsible-content">
-        {messages_html}
-        {tools_html}
+    <div style="margin-top: 10px;">
+        <div class="collapsible" onclick="toggleCollapsible(this)">
+            <span class="toggle-icon">&#9654;</span> Tools ({tool_count})
+            <span class="char-count">{tools_chars} chars</span>
+        </div>
+        <div class="collapsible-content">
+            {tools_html}
+        </div>
     </div>
 </div>
 """
