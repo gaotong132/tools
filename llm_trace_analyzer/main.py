@@ -65,7 +65,9 @@ class LLMTraceAnalyzer:
         tool_call_events = loader.load_tool_call_events()
         subagent_start_events = loader.load_subagent_start_events()
 
-        subagent_task_ids = set()
+        subagent_session_ids = set()
+
+        # 处理 spawn_subagent
         for event in tool_call_events:
             if (
                 event.get("session_id") == session_filter
@@ -77,9 +79,22 @@ class LLMTraceAnalyzer:
                     if abs(start_time - spawn_time) < 5.0:
                         task_id = start_event.get("task_id")
                         if task_id:
-                            subagent_task_ids.add(task_id)
+                            subagent_session_ids.add(f"subagent_{task_id}")
 
-        subagent_session_ids = {f"subagent_{task_id}" for task_id in subagent_task_ids}
+        # 处理 fork_agent
+        for event in tool_call_events:
+            if (
+                event.get("session_id") == session_filter
+                and event.get("tool_name") == "fork_agent"
+            ):
+                fork_time = event.get("timestamp", 0)
+                # 在 traces 中找 fork_fork_agent session 的第一个请求时间
+                for t in traces:
+                    if t["session_id"].startswith("fork_fork_agent_"):
+                        # 假设第一个 trace 的 timestamp 就是启动时间
+                        if abs(t["timestamp"] - fork_time) < 5.0:
+                            subagent_session_ids.add(t["session_id"])
+
         subagent_traces = [t for t in traces if t["session_id"] in subagent_session_ids]
 
         return parent_traces + subagent_traces

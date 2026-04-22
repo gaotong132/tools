@@ -43,6 +43,7 @@ class LogLoader:
 
     def _parse_tool_call_events(self, f) -> List[Dict[str, Any]]:
         events: List[Dict[str, Any]] = []
+        # 解析所有 ToolCall 事件（spawn_subagent, fork_agent 等）
         pattern = re.compile(
             r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\s+"
             r"\[\d+\]\s+INFO\s+[^:]+:\d+:\s+"
@@ -64,11 +65,19 @@ class LogLoader:
                 tool_name = match.group(2)
                 session_id = match.group(3)
 
+                # 对于 fork_agent，提取 task_id（session_id 中的后缀）
+                task_id = None
+                if tool_name == "fork_agent":
+                    # fork_agent 启动后 subAgent session_id 格式：fork_fork_agent_xxxx
+                    # 需要从后续日志中获取，这里先记录
+                    task_id = None
+
                 events.append(
                     {
                         "timestamp": timestamp,
                         "tool_name": tool_name,
                         "session_id": session_id,
+                        "task_id": task_id,
                         "line": line,
                     }
                 )
