@@ -149,15 +149,7 @@ REQUEST_TEMPLATE = """
             {messages_html}
         </div>
     </div>
-    <div style="margin-top: 10px;">
-        <div class="collapsible" onclick="toggleCollapsible(this)">
-            <span class="toggle-icon">&#9654;</span> Tools ({tool_count})
-            <span class="char-count">{tools_chars} chars</span>
-        </div>
-        <div class="collapsible-content">
-            {tools_html}
-        </div>
-    </div>
+    {tools_html}
 </div>
 """
 
@@ -343,6 +335,14 @@ SESSION_DETAIL_TEMPLATE = """
         .timestamp {{ color: #666; font-size: 12px; }}
         .char-count {{ color: #888; font-size: 11px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px; margin-left: 10px; }}
         .chain-label {{ font-size: 11px; color: #666; }}
+.toggle-view-btn {{ margin-bottom: 10px; padding: 4px 12px; background: #4a90d9; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }}
+.toggle-view-btn:hover {{ background: #3a7bc8; }}
+.tool-view-names {{ display: none; }}
+.tool-view-names.expanded {{ display: block; }}
+.tool-view-full {{ display: none; }}
+.tool-view-full.expanded {{ display: block; }}
+.tool-names-grid {{ display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; background: #f8f9fa; border-radius: 4px; }}
+.tool-name-item {{ background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 3px; font-size: 12px; font-family: monospace; }}
     </style>
 </head>
 <body>
@@ -378,6 +378,19 @@ SESSION_DETAIL_TEMPLATE = """
                 }}, 2000);
             }});
         }}
+        function toggleToolView(btn, namesId, fullId) {{
+            const namesDiv = document.getElementById(namesId);
+            const fullDiv = document.getElementById(fullId);
+            if (namesDiv.classList.contains('expanded')) {{
+                namesDiv.classList.remove('expanded');
+                fullDiv.classList.add('expanded');
+                btn.textContent = 'Toggle: Names';
+            }} else {{
+                namesDiv.classList.add('expanded');
+                fullDiv.classList.remove('expanded');
+                btn.textContent = 'Toggle: Full';
+            }}
+        }}
     </script>
 </body>
 </html>
@@ -404,6 +417,30 @@ ITERATION_DETAIL_TEMPLATE = """
     <div class="iteration-content">
         {request_html}
         {response_html}
+    </div>
+</div>
+"""
+
+TOOL_NAME_ITEM_TEMPLATE = """<span class="tool-name-item">{name}</span>"""
+
+TOOLS_SECTION_TEMPLATE = """
+<div style="margin-top: 10px;">
+    <div class="collapsible" onclick="toggleCollapsible(this)">
+        <span class="toggle-icon">&#9654;</span> Tools ({tool_count})
+        <span class="char-count">{tools_chars} chars</span>
+    </div>
+    <div class="collapsible-content">
+        <button class="toggle-view-btn" onclick="toggleToolView(this, '{names_id}', '{full_id}')">
+            Toggle: Names
+        </button>
+        <div id="{names_id}" class="tool-view-names expanded">
+            <div class="tool-names-grid">
+                {tool_names_html}
+            </div>
+        </div>
+        <div id="{full_id}" class="tool-view-full">
+            {tools_html}
+        </div>
     </div>
 </div>
 """

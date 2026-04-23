@@ -22,6 +22,8 @@ from .templates import (
     SUBAGENT_TREE_TEMPLATE,
     SYSTEM_PROMPT_TEMPLATE,
     TOOL_CALLS_TEMPLATE,
+    TOOL_NAME_ITEM_TEMPLATE,
+    TOOLS_SECTION_TEMPLATE,
 )
 
 
@@ -218,8 +220,21 @@ class HTMLReporter:
         tools_chars = len(tools_json)
 
         messages_html = self._make_json_block(other_messages)
-        tools_html = self._make_json_block(request.tools)
+        tools_full_html = self._make_json_block(request.tools)
+        tool_names_html = self._generate_tool_names_html(request.tools)
         timestamp_str = self._format_timestamp(request.timestamp)
+
+        names_id = self._next_id()
+        full_id = self._next_id()
+
+        tools_section_html = TOOLS_SECTION_TEMPLATE.format(
+            tool_count=len(request.tools),
+            tools_chars=tools_chars,
+            names_id=names_id,
+            full_id=full_id,
+            tool_names_html=tool_names_html,
+            tools_html=tools_full_html,
+        )
 
         request_chars = system_prompt_chars + messages_chars + tools_chars
 
@@ -230,12 +245,19 @@ class HTMLReporter:
             source_label=request.source_label,
             system_prompt_html=system_prompt_html,
             message_count=len(other_messages),
-            tool_count=len(request.tools),
             messages_chars=messages_chars,
-            tools_chars=tools_chars,
             messages_html=messages_html,
-            tools_html=tools_html,
+            tools_html=tools_section_html,
         )
+
+    def _generate_tool_names_html(self, tools: List) -> str:
+        """生成工具名网格 HTML"""
+        items = []
+        for tool in tools:
+            name = tool.get("name", "")
+            if name:
+                items.append(TOOL_NAME_ITEM_TEMPLATE.format(name=name))
+        return "\n".join(items)
 
     def _generate_response_html(self, response: LLMResponse) -> str:
         timestamp_str = self._format_timestamp(response.timestamp)
