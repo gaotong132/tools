@@ -117,12 +117,30 @@ class ChainAnalyzer:
                         best_match = fork_call
 
                 if best_match:
-                    parent_session = best_match.get("session_id")
-                    if parent_session:
-                        if parent_session not in self._parent_to_task_ids:
-                            self._parent_to_task_ids[parent_session] = []
-                        self._parent_to_task_ids[parent_session].append((task_id, best_match["timestamp"]))
-                        self._task_id_to_parent[task_id] = parent_session
+                    direct_parent = best_match.get("session_id")
+                    if direct_parent:
+                        # 递归向上找到真正的顶层父 session
+                        root_parent = self._find_root_parent(direct_parent)
+                        if root_parent not in self._parent_to_task_ids:
+                            self._parent_to_task_ids[root_parent] = []
+                        self._parent_to_task_ids[root_parent].append((task_id, best_match["timestamp"]))
+                        self._task_id_to_parent[task_id] = direct_parent  # 记录直接调用者
+
+    def _find_root_parent(self, session_id: str) -> str:
+        """递归向上找到真正的顶层父 session"""
+        # 如果是 subAgent，向上查找
+        if session_id.startswith("subagent_subagent_"):
+            # 从 session_id 提取 task_id：subagent_subagent_xxxx -> subagent_xxxx
+            task_id = session_id[len("subagent_") :]  # subagent_xxxx
+            parent = self._task_id_to_parent.get(task_id)
+            if parent:
+                return self._find_root_parent(parent)
+        elif session_id.startswith("fork_fork_agent_"):
+            parent = self._task_id_to_parent.get(session_id)
+            if parent:
+                return self._find_root_parent(parent)
+        # 如果不是 subAgent，就是顶层父 session
+        return session_id
 
     def _identify_parent_sessions(self) -> List[str]:
         parent_ids: List[str] = []
