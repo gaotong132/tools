@@ -36,6 +36,9 @@ class SubagentInfo:
     session_id: str
     start_time: float = 0.0
     end_time: float = 0.0
+    depth: int = 0  # 嵌套深度：0=直接子Agent, 1=子Agent的子Agent...
+    parent_session_id: str = ""  # 直接调用者 session_id
+    chain_path: List[str] = field(default_factory=list)  # 嵌套路径：["Parent", "Sub1", "Sub2"]
 
 
 @dataclass

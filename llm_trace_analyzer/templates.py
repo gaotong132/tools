@@ -307,7 +307,18 @@ SESSION_DETAIL_TEMPLATE = """
         .header .meta {{ font-size: 14px; opacity: 0.9; }}
         .back-link {{ margin-bottom: 15px; }}
         .back-link a {{ color: #4a90d9; }}
+        .subagents-tree {{ background: white; border-radius: 8px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+        .subagents-tree h3 {{ margin-bottom: 10px; color: #4a90d9; }}
+        .subagent-node {{ padding: 5px 0; }}
+        .subagent-node.depth-0 {{ padding-left: 0; }}
+        .subagent-node.depth-1 {{ padding-left: 20px; background: #f8f9fa; }}
+        .subagent-node.depth-2 {{ padding-left: 40px; background: #f0f0f0; }}
+        .subagent-node.depth-3 {{ padding-left: 60px; background: #e8e8e8; }}
+        .subagent-node .arrow {{ color: #888; margin-right: 5px; }}
         .iteration-block {{ border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; }}
+        .iteration-block.depth-1 {{ margin-left: 20px; border-left: 3px solid #7b1fa2; }}
+        .iteration-block.depth-2 {{ margin-left: 40px; border-left: 3px solid #9c27b0; }}
+        .iteration-block.depth-3 {{ margin-left: 60px; border-left: 3px solid #ba68c8; }}
         .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; }}
         .iteration-content {{ padding: 15px; }}
         .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 0; margin: 10px 0; overflow: hidden; position: relative; }}
@@ -320,6 +331,9 @@ SESSION_DETAIL_TEMPLATE = """
         .label.tool {{ background: #fff3e0; color: #f57c00; }}
         .label.reasoning {{ background: #fce4ec; color: #c2185b; }}
         .label.subagent {{ background: #f3e5f5; color: #7b1fa2; }}
+        .label.depth-1 {{ background: #ede7f6; }}
+        .label.depth-2 {{ background: #d1c4e9; }}
+        .label.depth-3 {{ background: #b39ddb; }}
         .collapsible {{ cursor: pointer; padding: 8px 12px; background: #e0e0e0; border-radius: 4px; margin-bottom: 8px; }}
         .collapsible:hover {{ background: #d0d0d0; }}
         .collapsible-content {{ display: none; }}
@@ -328,6 +342,7 @@ SESSION_DETAIL_TEMPLATE = """
         .toggle-icon.rotated {{ transform: rotate(90deg); }}
         .timestamp {{ color: #666; font-size: 12px; }}
         .char-count {{ color: #888; font-size: 11px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px; margin-left: 10px; }}
+        .chain-label {{ font-size: 11px; color: #666; }}
     </style>
 </head>
 <body>
@@ -337,6 +352,7 @@ SESSION_DETAIL_TEMPLATE = """
             <h1>Session: {session_id_short}</h1>
             <div class="meta">Model: {model_name} | Iterations: {total_iterations} | {start_time} - {end_time}</div>
         </div>
+        {subagents_tree_html}
         {iterations_html}
     </div>
     <script>
@@ -367,9 +383,24 @@ SESSION_DETAIL_TEMPLATE = """
 </html>
 """
 
+SUBAGENT_TREE_TEMPLATE = """
+<div class="subagents-tree">
+    <h3>Subagents ({subagent_count})</h3>
+    {tree_nodes_html}
+</div>
+"""
+
+SUBAGENT_NODE_TEMPLATE = """
+<div class="subagent-node depth-{depth}">
+    <span class="arrow">&#8594;</span>
+    <span class="chain-label">{chain_label}</span>
+    <span class="char-count">{iterations} iters</span>
+</div>
+"""
+
 ITERATION_DETAIL_TEMPLATE = """
-<div class="iteration-block">
-    <div class="iteration-header">Iteration {iteration_num}</div>
+<div class="iteration-block depth-{depth}">
+    <div class="iteration-header">Iteration {iteration_num} {depth_indicator}</div>
     <div class="iteration-content">
         {request_html}
         {response_html}

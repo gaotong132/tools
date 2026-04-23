@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from .models import AnalysisResult, LLMChain, LLMRequest, LLMResponse
+from .models import AnalysisResult, LLMChain, LLMRequest, LLMResponse, SubagentInfo
 from .templates import (
     CONTENT_TEMPLATE,
     INDEX_TEMPLATE,
@@ -18,6 +18,8 @@ from .templates import (
     RESPONSE_TEMPLATE,
     SESSION_DETAIL_TEMPLATE,
     SESSION_ROW_TEMPLATE,
+    SUBAGENT_NODE_TEMPLATE,
+    SUBAGENT_TREE_TEMPLATE,
     SYSTEM_PROMPT_TEMPLATE,
     TOOL_CALLS_TEMPLATE,
 )
@@ -89,6 +91,7 @@ class HTMLReporter:
         detail_file = report_dir / f"session_{short_id}.html"
 
         iterations_html = self._generate_iterations_html(chain)
+        subagents_tree_html = self._generate_subagents_tree_html(chain)
 
         html_content = SESSION_DETAIL_TEMPLATE.format(
             session_id_short=short_id,
@@ -98,10 +101,39 @@ class HTMLReporter:
             start_time=self._format_timestamp(chain.start_time),
             end_time=self._format_timestamp(chain.end_time),
             iterations_html=iterations_html,
+            subagents_tree_html=subagents_tree_html,
         )
 
         with open(detail_file, "w", encoding="utf-8") as f:
             f.write(html_content)
+
+    def _generate_subagents_tree_html(self, chain: LLMChain) -> str:
+        if not chain.subagents:
+            return ""
+
+        # 按深度和开始时间排序
+        sorted_subagents = sorted(chain.subagents, key=lambda s: (s.depth, s.start_time))
+
+        tree_nodes: List[str] = []
+        for sa in sorted_subagents:
+            # 计算 iterations 数量
+            iterations = len(self._get_requests_for_subagent(chain, sa.session_id))
+
+            node_html = SUBAGENT_NODE_TEMPLATE.format(
+                depth=sa.depth,
+                chain_label=" → ".join(sa.chain_path) if sa.chain_path else sa.task_id[:12],
+                iterations=iterations,
+            )
+            tree_nodes.append(node_html)
+
+        return SUBAGENT_TREE_TEMPLATE.format(
+            subagent_count=len(chain.subagents),
+            tree_nodes_html="\n".join(tree_nodes),
+        )
+
+    def _get_requests_for_subagent(self, chain: LLMChain, session_id: str) -> List[LLMRequest]:
+        """获取特定 subAgent session 的请求"""
+        return [r for r in chain.requests if r.session_id == session_id]
 
     def _short_session_id(self, session_id: str) -> str:
         if not session_id:
@@ -123,21 +155,42 @@ class HTMLReporter:
             iteration_num = i + 1
 
             request_html = ""
+            depth = 0
+            depth_indicator = ""
             if i < len(chain.requests):
-                request_html = self._generate_request_html(chain.requests[i])
+                request = chain.requests[i]
+                request_html = self._generate_request_html(request)
+                # 根据 source_label 计算 depth
+                if request.source == "subagent":
+                    depth = self._calc_depth_from_label(request.source_label)
 
             response_html = ""
             if i < len(chain.responses):
-                response_html = self._generate_response_html(chain.responses[i])
+                response = chain.responses[i]
+                response_html = self._generate_response_html(response)
+                if response.source == "subagent":
+                    depth = self._calc_depth_from_label(response.source_label)
+
+            if depth > 0:
+                depth_indicator = f"(Depth {depth})"
 
             iteration_html = ITERATION_DETAIL_TEMPLATE.format(
                 iteration_num=iteration_num,
+                depth=depth,
+                depth_indicator=depth_indicator,
                 request_html=request_html,
                 response_html=response_html,
             )
             iterations_parts.append(iteration_html)
 
         return "\n".join(iterations_parts)
+
+    def _calc_depth_from_label(self, label: str) -> int:
+        """从 source_label 计算嵌套深度，如 'Parent → Sub[xxx] → Fork[xxx]' """
+        if not label:
+            return 0
+        arrows = label.split(" → ")
+        return len(arrows) - 1
 
     def _generate_request_html(self, request: LLMRequest) -> str:
         system_prompt_html = ""

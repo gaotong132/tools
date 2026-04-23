@@ -195,12 +195,19 @@ class ChainAnalyzer:
                 subagent_resps = self.responses.get(subagent_session, [])
                 sub_start = subagent_reqs[0].timestamp if subagent_reqs else spawn_time
                 sub_end = subagent_resps[-1].timestamp if subagent_resps else 0.0
+
+                # 计算嵌套深度和路径
+                depth, chain_path, direct_parent = self._compute_subagent_depth(task_id)
+
                 subagent_infos.append(
                     SubagentInfo(
                         task_id=task_id,
                         session_id=subagent_session,
                         start_time=sub_start,
                         end_time=sub_end,
+                        depth=depth,
+                        parent_session_id=direct_parent,
+                        chain_path=chain_path,
                     )
                 )
 
@@ -214,15 +221,18 @@ class ChainAnalyzer:
             else:
                 subagent_session = f"subagent_{task_id}"
 
+            # 计算嵌套深度和路径用于显示
+            depth, chain_path, direct_parent = self._compute_subagent_depth(task_id)
+
             if subagent_session in self.requests:
                 for req in self.requests[subagent_session]:
                     req.source = "subagent"
-                    req.source_label = f"Subagent [{self._short_task_id(task_id)}]"
+                    req.source_label = self._format_chain_label(chain_path, depth)
                     all_requests.append(req)
             if subagent_session in self.responses:
                 for resp in self.responses[subagent_session]:
                     resp.source = "subagent"
-                    resp.source_label = f"Subagent [{self._short_task_id(task_id)}]"
+                    resp.source_label = self._format_chain_label(chain_path, depth)
                     all_responses.append(resp)
 
         all_requests.sort(key=lambda r: r.timestamp)
@@ -242,6 +252,56 @@ class ChainAnalyzer:
             subagents=subagent_infos,
             is_subagent=False,
         )
+
+    def _compute_subagent_depth(self, task_id: str) -> Tuple[int, List[str], str]:
+        """计算 subAgent 的嵌套深度和调用路径"""
+        chain_path = []
+        depth = 0
+
+        # 直接调用者（第一次循环的 parent_session）
+        first_parent_session = self._task_id_to_parent.get(task_id)
+        direct_parent = first_parent_session if first_parent_session else ""
+
+        # 添加当前 subAgent 到路径末尾
+        current_short_name = self._short_task_id(task_id)
+        if task_id.startswith("fork_fork_agent_"):
+            chain_path.append(f"Fork[{current_short_name}]")
+        else:
+            chain_path.append(f"Sub[{current_short_name}]")
+
+        current_task_id = task_id
+        while True:
+            # 找到当前 task_id 的直接父 session
+            parent_session = self._task_id_to_parent.get(current_task_id)
+            if not parent_session:
+                # 顶层父 session
+                chain_path.insert(0, "Parent")
+                break
+
+            # 判断父 session 是否也是 subAgent
+            if parent_session.startswith("subagent_subagent_"):
+                # 父是 spawn_subagent 创建的 subAgent
+                parent_task_id = parent_session[len("subagent_") :]  # subagent_xxxx
+                short_name = self._short_task_id(parent_task_id)
+                chain_path.insert(0, f"Sub[{short_name}]")
+                depth += 1
+                current_task_id = parent_task_id
+            elif parent_session.startswith("fork_fork_agent_"):
+                # 父是 fork_agent 创建的
+                short_name = self._short_task_id(parent_session)
+                chain_path.insert(0, f"Fork[{short_name}]")
+                depth += 1
+                current_task_id = parent_session  # forkAgent 的 task_id 就是 session_id
+            else:
+                # 父是顶层 session
+                chain_path.insert(0, "Parent")
+                break
+
+        return depth, chain_path, direct_parent
+
+    def _format_chain_label(self, chain_path: List[str], depth: int) -> str:
+        """格式化调用链标签"""
+        return " → ".join(chain_path)
 
     def _build_standalone_subagent_chain(self, session_id: str) -> Optional[LLMChain]:
         reqs = self.requests.get(session_id, [])
