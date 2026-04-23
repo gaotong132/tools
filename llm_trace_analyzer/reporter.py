@@ -5,7 +5,7 @@ import json
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Tuple
 
 from .models import AnalysisResult, LLMChain, LLMRequest, LLMResponse, SubagentInfo
 from .templates import (
@@ -150,25 +150,44 @@ class HTMLReporter:
         return f"content_{self._id_counter}"
 
     def _generate_iterations_html(self, chain: LLMChain) -> str:
-        max_iterations = max(len(chain.requests), len(chain.responses))
-        iterations_parts: List[str] = []
+        # 按 (session_id, iteration) 配对请求和响应
+        paired_items: Dict[Tuple[str, int], Dict] = {}
 
-        for i in range(max_iterations):
+        for req in chain.requests:
+            key = (req.session_id, req.iteration)
+            if key not in paired_items:
+                paired_items[key] = {"request": None, "response": None, "timestamp": 0}
+            paired_items[key]["request"] = req
+            paired_items[key]["timestamp"] = req.timestamp
+
+        for resp in chain.responses:
+            key = (resp.session_id, resp.iteration)
+            if key not in paired_items:
+                paired_items[key] = {"request": None, "response": None, "timestamp": 0}
+            paired_items[key]["response"] = resp
+            # 如果没有 request，用 response 的 timestamp
+            if paired_items[key]["timestamp"] == 0:
+                paired_items[key]["timestamp"] = resp.timestamp
+
+        # 按 timestamp 排序
+        sorted_items = sorted(paired_items.values(), key=lambda x: x["timestamp"])
+
+        iterations_parts: List[str] = []
+        for i, item in enumerate(sorted_items):
             iteration_num = i + 1
 
             request_html = ""
             depth = 0
             depth_indicator = ""
-            if i < len(chain.requests):
-                request = chain.requests[i]
+            if item["request"]:
+                request = item["request"]
                 request_html = self._generate_request_html(request)
-                # 根据 source_label 计算 depth
                 if request.source == "subagent":
                     depth = self._calc_depth_from_label(request.source_label)
 
             response_html = ""
-            if i < len(chain.responses):
-                response = chain.responses[i]
+            if item["response"]:
+                response = item["response"]
                 response_html = self._generate_response_html(response)
                 if response.source == "subagent":
                     depth = self._calc_depth_from_label(response.source_label)
