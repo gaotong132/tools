@@ -2,7 +2,6 @@
 
 import html
 import json
-import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -50,14 +49,6 @@ class HTMLReporter:
         for chain in result.sorted_sessions:
             short_id = self._short_session_id(chain.session_id)
             print(f"  - session_{short_id}.html")
-
-        zip_path = output_dir / f"{output_name}.zip"
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for file_path in report_dir.rglob("*"):
-                if file_path.is_file():
-                    arc_name = file_path.relative_to(report_dir)
-                    zf.write(file_path, arc_name)
-        print(f"Archive created: {zip_path}")
 
     def _generate_index(self, result: AnalysisResult, report_dir: Path) -> None:
         stats = result.statistics
