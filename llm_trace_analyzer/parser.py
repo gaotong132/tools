@@ -52,8 +52,10 @@ class TraceParser:
             iter_traces = by_iteration[iteration]
 
             # 分离不同事件类型
-            request_traces = [t for t in iter_traces if t["event"] == TraceEventType.STREAM_REQUEST.value]
-            output_traces = [t for t in iter_traces if t["event"] == TraceEventType.STREAM_OUTPUT.value]
+            request_traces = [t for t in iter_traces
+                if t["event"] in (TraceEventType.STREAM_REQUEST.value, TraceEventType.INVOKE_REQUEST.value)]
+            output_traces = [t for t in iter_traces
+                if t["event"] in (TraceEventType.STREAM_OUTPUT.value, TraceEventType.INVOKE_OUTPUT.value)]
             reasoning_traces = [t for t in iter_traces if t["event"] == TraceEventType.REASONING_DELTA.value]
 
             # 按 stream_request/stream_output 时间戳聚类（阈值 1 秒）

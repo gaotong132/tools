@@ -7,6 +7,8 @@ class TraceEventType(Enum):
     STREAM_REQUEST = "stream_request"
     STREAM_OUTPUT = "stream_output"
     REASONING_DELTA = "reasoning_delta"
+    INVOKE_REQUEST = "invoke_request"
+    INVOKE_OUTPUT = "invoke_output"
 
 
 DEFAULT_LOGS_DIR = ".office-claw/.jiuwenclaw/.logs"
