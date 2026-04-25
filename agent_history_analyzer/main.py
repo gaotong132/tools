@@ -113,8 +113,16 @@ def main():
             sys.exit(1)
         print(f"使用最新会话: {json_path}")
 
+    # 确定输出路径：默认在JSON文件所在目录生成报告
+    output_path: str
+    if args.output == "report.html":
+        # 使用默认值时，报告生成在JSON文件所在目录
+        output_path = str(json_path.parent / "report")
+    else:
+        output_path = args.output
+
     analyzer = AgentHistoryAnalyzer(str(json_path))
-    success = analyzer.run(output_path=args.output, verbose=args.verbose)
+    success = analyzer.run(output_path=output_path, verbose=args.verbose)
 
     if not success:
         sys.exit(1)

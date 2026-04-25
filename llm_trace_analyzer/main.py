@@ -199,9 +199,17 @@ Examples:
         log_path = found_path
         print(f"Using log file: {log_path}")
 
+    # 确定输出路径：默认在日志文件所在目录生成报告
+    output_path: str
+    if args.output == "llm_trace_report":
+        # 使用默认值时，报告生成在日志文件所在目录
+        output_path = str(log_path.parent / "llm_trace_report")
+    else:
+        output_path = args.output
+
     analyzer = LLMTraceAnalyzer(str(log_path))
     success = analyzer.run(
-        output_path=args.output,
+        output_path=output_path,
         verbose=args.verbose,
         session_filter=args.session,
     )
