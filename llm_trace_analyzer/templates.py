@@ -158,6 +158,7 @@ TOOL_RESULT_TEMPLATE = """
 <div style="margin-top: 10px;">
     <span class="label tool">Tool Call Results ({new_count})</span>
     <span class="char-count">{new_chars} chars</span>
+    <span class="char-count" style="margin-left: 10px; color: #666;">[{tool_names}]</span>
     <div class="json-container">
         <button class="copy-btn" onclick="copyToClipboard(this, '{content_id}')">Copy</button>
         <pre class="json-content" id="{content_id}">{new_messages_json}</pre>

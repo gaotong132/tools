@@ -166,6 +166,7 @@ class HTMLReporter:
 
         iterations_parts: List[str] = []
         prev_request: Optional[LLMRequest] = None
+        prev_response: Optional[LLMResponse] = None
         for i, item in enumerate(sorted_items):
             iteration_num = i + 1
 
@@ -174,7 +175,7 @@ class HTMLReporter:
             depth_indicator = ""
             if item["request"]:
                 request = item["request"]
-                request_html = self._generate_request_html(request, prev_request)
+                request_html = self._generate_request_html(request, prev_request, prev_response)
                 if request.source == "subagent":
                     depth = self._calc_depth_from_label(request.source_label)
                 prev_request = request
@@ -185,6 +186,7 @@ class HTMLReporter:
                 response_html = self._generate_response_html(response)
                 if response.source == "subagent":
                     depth = self._calc_depth_from_label(response.source_label)
+                prev_response = response
 
             if depth > 0:
                 depth_indicator = f"(Depth {depth})"
@@ -207,7 +209,7 @@ class HTMLReporter:
         arrows = label.split(" → ")
         return len(arrows) - 1
 
-    def _generate_request_html(self, request: LLMRequest, prev_request: Optional[LLMRequest] = None) -> str:
+    def _generate_request_html(self, request: LLMRequest, prev_request: Optional[LLMRequest] = None, prev_response: Optional[LLMResponse] = None) -> str:
         system_prompt_html = ""
         system_prompt_chars = 0
         other_messages = []
@@ -249,8 +251,8 @@ class HTMLReporter:
             tools_html=tools_full_html,
         )
 
-        # 生成 New Message HTML
-        new_message_html = self._generate_new_message_html(other_messages, prev_request)
+        # 生成 Tool Call Results HTML
+        new_message_html = self._generate_new_message_html(other_messages, prev_request, prev_response)
 
         request_chars = system_prompt_chars + messages_chars + tools_chars
 
@@ -276,7 +278,7 @@ class HTMLReporter:
                 items.append(TOOL_NAME_ITEM_TEMPLATE.format(name=name))
         return "\n".join(items)
 
-    def _generate_new_message_html(self, current_messages: List, prev_request: Optional[LLMRequest]) -> str:
+    def _generate_new_message_html(self, current_messages: List, prev_request: Optional[LLMRequest], prev_response: Optional[LLMResponse]) -> str:
         """生成 ToolResult 部分 HTML，显示与上一个迭代相比新增的工具调用结果"""
         # 只显示 tool 类型的 messages（工具调用结果）
         # assistant 是上一轮 RESPONSE 的输出，user 是用户输入，不应算作 REQUEST 的新增
@@ -297,6 +299,23 @@ class HTMLReporter:
         if not new_messages:
             return ""
 
+        # 从 prev_response 构建 tool_call_id -> tool_name 映射
+        tool_name_map: Dict[str, str] = {}
+        if prev_response and prev_response.tool_calls:
+            for tc in prev_response.tool_calls:
+                tc_id = tc.get("id", "")
+                # 支持两种格式：旧格式直接有 name，新格式在 function.name 下
+                tc_name = tc.get("name", "") or tc.get("function", {}).get("name", "")
+                if tc_id and tc_name:
+                    tool_name_map[tc_id] = tc_name
+
+        # 为每个 tool message 获取工具名称
+        tool_names: List[str] = []
+        for msg in new_messages:
+            tc_id = msg.get("tool_call_id", "")
+            name = tool_name_map.get(tc_id, tc_id[:20] if tc_id else "unknown")
+            tool_names.append(name)
+
         new_messages_json = json.dumps(new_messages, indent=2, ensure_ascii=False)
         new_chars = len(new_messages_json)
         content_id = self._next_id()
@@ -307,6 +326,7 @@ class HTMLReporter:
             new_chars=new_chars,
             content_id=content_id,
             new_messages_json=escaped_content,
+            tool_names=", ".join(tool_names),
         )
 
     def _find_new_messages(self, current_messages: List, prev_messages: List) -> List:
