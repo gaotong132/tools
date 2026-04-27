@@ -26,7 +26,8 @@ HTML_TEMPLATE = """
         .session-body {{ padding: 20px; }}
         .session-body.hidden {{ display: none; }}
         .iteration-block {{ border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; }}
-        .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; }}
+        .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; position: relative; }}
+        .iteration-header .copy-btn {{ position: static; margin-left: 15px; padding: 4px 12px; opacity: 0.9; }}
         .iteration-content {{ padding: 15px; }}
         .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 15px; margin: 10px 0; }}
         .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre; overflow-x: auto; overflow-y: auto; min-height: 200px; max-height: 400px; width: 100%; resize: vertical; border: none; background: transparent; }}
@@ -326,7 +327,8 @@ SESSION_DETAIL_TEMPLATE = """
         .iteration-block.depth-1 {{ margin-left: 20px; border-left: 3px solid #7b1fa2; }}
         .iteration-block.depth-2 {{ margin-left: 40px; border-left: 3px solid #9c27b0; }}
         .iteration-block.depth-3 {{ margin-left: 60px; border-left: 3px solid #ba68c8; }}
-        .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; }}
+        .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; position: relative; }}
+        .iteration-header .copy-btn {{ position: static; margin-left: 15px; padding: 4px 12px; opacity: 0.9; }}
         .iteration-content {{ padding: 15px; }}
         .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 0; margin: 10px 0; overflow: hidden; position: relative; }}
         .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre-wrap; word-break: break-all; overflow-x: auto; overflow-y: auto; max-height: 400px; padding: 15px; padding-top: 35px; padding-right: 50px; margin: 0; }}
@@ -393,6 +395,18 @@ SESSION_DETAIL_TEMPLATE = """
                 }}, 2000);
             }});
         }}
+        function copyRequestBody(btn) {{
+            const hiddenPre = btn.nextElementSibling;
+            const content = hiddenPre.textContent;
+            navigator.clipboard.writeText(content).then(() => {{
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {{
+                    btn.textContent = 'Copy Body';
+                    btn.classList.remove('copied');
+                }}, 2000);
+            }});
+        }}
         function toggleToolView(btn, namesId, fullId) {{
             const namesDiv = document.getElementById(namesId);
             const fullDiv = document.getElementById(fullId);
@@ -428,7 +442,11 @@ SUBAGENT_NODE_TEMPLATE = """
 
 ITERATION_DETAIL_TEMPLATE = """
 <div class="iteration-block depth-{depth}">
-    <div class="iteration-header">Iteration {iteration_num} {depth_indicator}</div>
+    <div class="iteration-header">
+        Iteration {iteration_num} {depth_indicator}
+        {copy_body_btn}
+        <pre style="display: none;" id="{body_id}">{body_json}</pre>
+    </div>
     <div class="iteration-content">
         {request_html}
         {response_html}

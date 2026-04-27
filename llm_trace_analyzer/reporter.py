@@ -185,6 +185,9 @@ class HTMLReporter:
             depth = 0
             depth_indicator = ""
             is_internal = False
+            body_id = ""
+            body_json = ""
+            copy_body_btn = ""
             if item["request"]:
                 request = item["request"]
                 is_internal = request.is_internal
@@ -194,6 +197,13 @@ class HTMLReporter:
                 # 内部请求不更新 prev_request，避免影响 Tool Call Results 计算
                 if not is_internal:
                     prev_request = request
+                # 生成 Copy Body 按钮和数据
+                body_id = self._next_id()
+                # 转换 tools 格式为标准 OpenAI 格式
+                converted_body = self._convert_tools_to_openai_format(request.body)
+                body_json_raw = json.dumps(converted_body, indent=2, ensure_ascii=False)
+                body_json = html.escape(body_json_raw)
+                copy_body_btn = f'<button class="copy-btn" style="margin-left: 15px;" onclick="copyRequestBody(this)">Copy Body</button>'
 
             response_html = ""
             if item["response"]:
@@ -211,6 +221,9 @@ class HTMLReporter:
                 iteration_num=iteration_num,
                 depth=depth,
                 depth_indicator=depth_indicator,
+                copy_body_btn=copy_body_btn,
+                body_id=body_id,
+                body_json=body_json,
                 request_html=request_html,
                 response_html=response_html,
             )
@@ -433,3 +446,37 @@ class HTMLReporter:
             return "N/A"
         dt = datetime.fromtimestamp(timestamp)
         return dt.strftime("%H:%M:%S")
+
+    def _convert_tools_to_openai_format(self, body: dict) -> dict:
+        """将 tools 从旧格式转换为标准 OpenAI 格式
+
+        旧格式: {"type": "function", "name": "xxx", "parameters": {...}}
+        标准格式: {"type": "function", "function": {"name": "xxx", "parameters": {...}}}
+        """
+        if "tools" not in body or not body["tools"]:
+            return body
+
+        converted_tools = []
+        for tool in body["tools"]:
+            if tool.get("type") == "function" and "name" in tool and "function" not in tool:
+                # 旧格式，需要转换
+                converted_tool = {
+                    "type": "function",
+                    "function": {
+                        "name": tool.get("name"),
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get("parameters", {})
+                    }
+                }
+                # 保留其他可能的字段如 strict
+                if "strict" in tool:
+                    converted_tool["function"]["strict"] = tool["strict"]
+                converted_tools.append(converted_tool)
+            else:
+                # 已经是标准格式或其他类型，保持不变
+                converted_tools.append(tool)
+
+        # 创建新的 body，不修改原始对象
+        new_body = body.copy()
+        new_body["tools"] = converted_tools
+        return new_body
