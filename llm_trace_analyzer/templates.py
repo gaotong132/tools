@@ -154,14 +154,13 @@ REQUEST_TEMPLATE = """
 </div>
 """
 
-NEW_MESSAGE_TEMPLATE = """
+TOOL_RESULT_TEMPLATE = """
 <div style="margin-top: 10px;">
-    <div class="collapsible expanded" onclick="toggleCollapsible(this)">
-        <span class="toggle-icon rotated">&#9654;</span> New Message ({new_count})
-        <span class="char-count">{new_chars} chars</span>
-    </div>
-    <div class="collapsible-content expanded">
-        {new_messages_html}
+    <span class="label tool">Tool Call Results ({new_count})</span>
+    <span class="char-count">{new_chars} chars</span>
+    <div class="json-container">
+        <button class="copy-btn" onclick="copyToClipboard(this, '{content_id}')">Copy</button>
+        <pre class="json-content" id="{content_id}">{new_messages_json}</pre>
     </div>
 </div>
 """

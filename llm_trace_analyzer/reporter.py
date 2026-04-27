@@ -12,7 +12,6 @@ from .templates import (
     INDEX_TEMPLATE,
     ITERATION_DETAIL_TEMPLATE,
     JSON_BLOCK_TEMPLATE,
-    NEW_MESSAGE_TEMPLATE,
     REASONING_TEMPLATE,
     REQUEST_TEMPLATE,
     RESPONSE_TEMPLATE,
@@ -23,6 +22,7 @@ from .templates import (
     SYSTEM_PROMPT_TEMPLATE,
     TOOL_CALLS_TEMPLATE,
     TOOL_NAME_ITEM_TEMPLATE,
+    TOOL_RESULT_TEMPLATE,
     TOOLS_SECTION_TEMPLATE,
 )
 
@@ -277,33 +277,36 @@ class HTMLReporter:
         return "\n".join(items)
 
     def _generate_new_message_html(self, current_messages: List, prev_request: Optional[LLMRequest]) -> str:
-        """生成 New Message 部分 HTML，显示与上一个迭代相比新增的 messages"""
-        # 只比较 user/assistant/tool 类型的 messages（排除所有 system）
-        current_non_system = [m for m in current_messages if m.get("role") != "system"]
+        """生成 ToolResult 部分 HTML，显示与上一个迭代相比新增的工具调用结果"""
+        # 只显示 tool 类型的 messages（工具调用结果）
+        # assistant 是上一轮 RESPONSE 的输出，user 是用户输入，不应算作 REQUEST 的新增
+        current_tools = [m for m in current_messages if m.get("role") == "tool"]
 
         if not prev_request:
-            # 第一个迭代，所有非 system message 都是新的
-            if not current_non_system:
+            # 第一个迭代，所有 tool message 都是新的
+            if not current_tools:
                 return ""
-            new_messages = current_non_system
+            new_messages = current_tools
         else:
-            # 获取上一个迭代的非 system messages
-            prev_non_system = [m for m in prev_request.messages if m.get("role") != "system"]
+            # 获取上一个迭代的 tool messages
+            prev_tools = [m for m in prev_request.messages if m.get("role") == "tool"]
 
-            # 找出新增的 messages
-            new_messages = self._find_new_messages(current_non_system, prev_non_system)
+            # 找出新增的 tool messages
+            new_messages = self._find_new_messages(current_tools, prev_tools)
 
         if not new_messages:
             return ""
 
         new_messages_json = json.dumps(new_messages, indent=2, ensure_ascii=False)
         new_chars = len(new_messages_json)
-        new_messages_html = self._make_json_block(new_messages)
+        content_id = self._next_id()
+        escaped_content = html.escape(new_messages_json)
 
-        return NEW_MESSAGE_TEMPLATE.format(
+        return TOOL_RESULT_TEMPLATE.format(
             new_count=len(new_messages),
             new_chars=new_chars,
-            new_messages_html=new_messages_html,
+            content_id=content_id,
+            new_messages_json=escaped_content,
         )
 
     def _find_new_messages(self, current_messages: List, prev_messages: List) -> List:
