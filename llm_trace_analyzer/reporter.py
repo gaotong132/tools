@@ -176,7 +176,8 @@ class HTMLReporter:
         sorted_items = sorted(paired_items.values(), key=lambda x: x["timestamp"])
 
         iterations_parts: List[str] = []
-        prev_request: Optional[LLMRequest] = None
+        # 按 session_id 维护 prev_request，避免跨 session 比较导致 Tool Call Results 计算错误
+        prev_requests_by_session: Dict[str, Optional[LLMRequest]] = {}
         prev_response: Optional[LLMResponse] = None
         for i, item in enumerate(sorted_items):
             iteration_num = i + 1
@@ -191,12 +192,15 @@ class HTMLReporter:
             if item["request"]:
                 request = item["request"]
                 is_internal = request.is_internal
+                session_id = request.session_id
+                # 获取该 session 的 prev_request
+                prev_request = prev_requests_by_session.get(session_id)
                 request_html = self._generate_request_html(request, prev_request, global_tool_name_map)
                 if request.source == "subagent":
                     depth = self._calc_depth_from_label(request.source_label)
                 # 内部请求不更新 prev_request，避免影响 Tool Call Results 计算
                 if not is_internal:
-                    prev_request = request
+                    prev_requests_by_session[session_id] = request
                 # 生成 Copy Body 按钮和数据
                 body_id = self._next_id()
                 # 转换 tools 格式为标准 OpenAI 格式
