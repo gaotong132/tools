@@ -142,6 +142,17 @@ class HTMLReporter:
         return f"content_{self._id_counter}"
 
     def _generate_iterations_html(self, chain: LLMChain) -> str:
+        # 先构建全局 tool_call_id → tool_name 映射表
+        global_tool_name_map: Dict[str, str] = {}
+        for resp in chain.responses:
+            if resp.tool_calls:
+                for tc in resp.tool_calls:
+                    tc_id = tc.get("id", "")
+                    # 支持两种格式：旧格式直接有 name，新格式在 function.name 下
+                    tc_name = tc.get("name", "") or tc.get("function", {}).get("name", "")
+                    if tc_id and tc_name:
+                        global_tool_name_map[tc_id] = tc_name
+
         # 按 (session_id, iteration) 配对请求和响应
         paired_items: Dict[Tuple[str, int], Dict] = {}
 
@@ -177,7 +188,7 @@ class HTMLReporter:
             if item["request"]:
                 request = item["request"]
                 is_internal = request.is_internal
-                request_html = self._generate_request_html(request, prev_request, prev_response)
+                request_html = self._generate_request_html(request, prev_request, global_tool_name_map)
                 if request.source == "subagent":
                     depth = self._calc_depth_from_label(request.source_label)
                 # 内部请求不更新 prev_request，避免影响 Tool Call Results 计算
@@ -190,9 +201,8 @@ class HTMLReporter:
                 response_html = self._generate_response_html(response)
                 if response.source == "subagent":
                     depth = self._calc_depth_from_label(response.source_label)
-                # 内部请求的 response 不更新 prev_response
-                if not is_internal:
-                    prev_response = response
+                # 响应始终更新 prev_response（用于工具名称关联），即使是内部请求的响应
+                prev_response = response
 
             if depth > 0:
                 depth_indicator = f"(Depth {depth})"
@@ -215,7 +225,7 @@ class HTMLReporter:
         arrows = label.split(" → ")
         return len(arrows) - 1
 
-    def _generate_request_html(self, request: LLMRequest, prev_request: Optional[LLMRequest] = None, prev_response: Optional[LLMResponse] = None) -> str:
+    def _generate_request_html(self, request: LLMRequest, prev_request: Optional[LLMRequest] = None, global_tool_name_map: Dict[str, str] = None) -> str:
         system_prompt_html = ""
         system_prompt_chars = 0
         other_messages = []
@@ -258,7 +268,7 @@ class HTMLReporter:
         )
 
         # 生成 Tool Call Results HTML
-        new_message_html = self._generate_new_message_html(other_messages, prev_request, prev_response)
+        new_message_html = self._generate_new_message_html(other_messages, prev_request, global_tool_name_map or {})
 
         request_chars = system_prompt_chars + messages_chars + tools_chars
 
@@ -290,7 +300,7 @@ class HTMLReporter:
                 items.append(TOOL_NAME_ITEM_TEMPLATE.format(name=name))
         return "\n".join(items)
 
-    def _generate_new_message_html(self, current_messages: List, prev_request: Optional[LLMRequest], prev_response: Optional[LLMResponse]) -> str:
+    def _generate_new_message_html(self, current_messages: List, prev_request: Optional[LLMRequest], global_tool_name_map: Dict[str, str]) -> str:
         """生成 ToolResult 部分 HTML，显示与上一个迭代相比新增的工具调用结果"""
         # 只显示 tool 类型的 messages（工具调用结果）
         # assistant 是上一轮 RESPONSE 的输出，user 是用户输入，不应算作 REQUEST 的新增
@@ -311,21 +321,11 @@ class HTMLReporter:
         if not new_messages:
             return ""
 
-        # 从 prev_response 构建 tool_call_id -> tool_name 映射
-        tool_name_map: Dict[str, str] = {}
-        if prev_response and prev_response.tool_calls:
-            for tc in prev_response.tool_calls:
-                tc_id = tc.get("id", "")
-                # 支持两种格式：旧格式直接有 name，新格式在 function.name 下
-                tc_name = tc.get("name", "") or tc.get("function", {}).get("name", "")
-                if tc_id and tc_name:
-                    tool_name_map[tc_id] = tc_name
-
-        # 为每个 tool message 获取工具名称
+        # 为每个 tool message 获取工具名称（使用全局映射表）
         tool_names: List[str] = []
         for msg in new_messages:
             tc_id = msg.get("tool_call_id", "")
-            name = tool_name_map.get(tc_id, tc_id[:20] if tc_id else "unknown")
+            name = global_tool_name_map.get(tc_id, tc_id[:20] if tc_id else "unknown")
             tool_names.append(name)
 
         new_messages_json = json.dumps(new_messages, indent=2, ensure_ascii=False)
