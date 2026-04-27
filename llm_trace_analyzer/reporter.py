@@ -355,16 +355,22 @@ class HTMLReporter:
         )
 
     def _find_new_messages(self, current_messages: List, prev_messages: List) -> List:
-        """找出新增的 messages"""
-        # 简单策略：新增的 messages 是最后几条（数量差）
-        prev_count = len(prev_messages)
-        curr_count = len(current_messages)
+        """找出新增的 tool messages（基于 tool_call_id 判断）"""
+        # 收集上一迭代的 tool_call_id 集合
+        prev_tool_ids = set()
+        for msg in prev_messages:
+            tc_id = msg.get("tool_call_id", "")
+            if tc_id:
+                prev_tool_ids.add(tc_id)
 
-        if curr_count <= prev_count:
-            return []
+        # 找当前迭代中 tool_call_id 不在上一迭代的 messages
+        new_messages = []
+        for msg in current_messages:
+            tc_id = msg.get("tool_call_id", "")
+            if tc_id and tc_id not in prev_tool_ids:
+                new_messages.append(msg)
 
-        # 返回最后新增的 messages
-        return current_messages[prev_count:]
+        return new_messages
 
     def _generate_response_html(self, response: LLMResponse) -> str:
         timestamp_str = self._format_timestamp(response.timestamp)
