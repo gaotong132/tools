@@ -173,12 +173,16 @@ class HTMLReporter:
             request_html = ""
             depth = 0
             depth_indicator = ""
+            is_internal = False
             if item["request"]:
                 request = item["request"]
+                is_internal = request.is_internal
                 request_html = self._generate_request_html(request, prev_request, prev_response)
                 if request.source == "subagent":
                     depth = self._calc_depth_from_label(request.source_label)
-                prev_request = request
+                # 内部请求不更新 prev_request，避免影响 Tool Call Results 计算
+                if not is_internal:
+                    prev_request = request
 
             response_html = ""
             if item["response"]:
@@ -186,7 +190,9 @@ class HTMLReporter:
                 response_html = self._generate_response_html(response)
                 if response.source == "subagent":
                     depth = self._calc_depth_from_label(response.source_label)
-                prev_response = response
+                # 内部请求的 response 不更新 prev_response
+                if not is_internal:
+                    prev_response = response
 
             if depth > 0:
                 depth_indicator = f"(Depth {depth})"
@@ -376,13 +382,21 @@ class HTMLReporter:
 
         tool_calls_chars = 0
         tool_calls_html = ""
+        tool_names_list: List[str] = []
         if response.tool_calls:
             tool_calls_json = json.dumps(response.tool_calls, indent=2, ensure_ascii=False)
             tool_calls_chars = len(tool_calls_json)
+            # 提取工具名称
+            for tc in response.tool_calls:
+                # 支持两种格式：旧格式直接有 name，新格式在 function.name 下
+                name = tc.get("name", "") or tc.get("function", {}).get("name", "")
+                if name:
+                    tool_names_list.append(name)
             tool_calls_html = self._make_json_block(
                 response.tool_calls,
                 tool_count=len(response.tool_calls),
                 char_count=tool_calls_chars,
+                tool_names=", ".join(tool_names_list),
             )
 
         response_chars = reasoning_chars + content_chars + tool_calls_chars
@@ -397,7 +411,7 @@ class HTMLReporter:
             tool_calls_html=tool_calls_html,
         )
 
-    def _make_json_block(self, obj, tool_count: int = 0, char_count: int = 0) -> str:
+    def _make_json_block(self, obj, tool_count: int = 0, char_count: int = 0, tool_names: str = "") -> str:
         json_str = json.dumps(obj, indent=2, ensure_ascii=False)
         if char_count == 0:
             char_count = len(json_str)
@@ -410,6 +424,7 @@ class HTMLReporter:
                 tool_count=tool_count,
                 char_count=char_count,
                 tool_calls_json=escaped_content,
+                tool_names=tool_names,
             )
         return JSON_BLOCK_TEMPLATE.format(content_id=content_id, content=escaped_content)
 
