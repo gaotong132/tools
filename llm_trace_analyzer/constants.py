@@ -11,6 +11,6 @@ class TraceEventType(Enum):
     INVOKE_OUTPUT = "invoke_output"
 
 
-DEFAULT_LOGS_DIR = ".office-claw/.jiuwenclaw/.logs"
-DEFAULT_LOG_FILE = "app.log"
+DEFAULT_LOGS_DIR = ".office-claw/.jiuwenclaw/agent/.logs"
+DEFAULT_LOG_FILE = "full.log"
 TRACE_MARKER = "[LLM_IO_TRACE]"

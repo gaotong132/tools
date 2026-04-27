@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import webbrowser
 from pathlib import Path
 from typing import Optional
 
@@ -154,9 +155,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  lt                              # Analyze latest app.log
+  lt                              # Analyze latest log
+  lt -O                           # Analyze and open report in browser
   lt <log_file>                   # Analyze specific log file
-  lt <log_file> -o my_report      # Specify output directory
+  lt <log_file> -o my_report -O   # Specify output and open in browser
   lt --session <session_id>       # Filter by session
   lt -v                           # Show verbose summary
         """,
@@ -183,6 +185,12 @@ Examples:
         "-v",
         action="store_true",
         help="Show verbose summary in terminal",
+    )
+    parser.add_argument(
+        "--open",
+        "-O",
+        action="store_true",
+        help="Open report in browser after generation",
     )
 
     args = parser.parse_args()
@@ -213,6 +221,12 @@ Examples:
         verbose=args.verbose,
         session_filter=args.session,
     )
+
+    if success and args.open:
+        # 打开生成的 index.html
+        index_file = Path(output_path) / "index.html"
+        if index_file.exists():
+            webbrowser.open(str(index_file))
 
     if not success:
         sys.exit(1)
