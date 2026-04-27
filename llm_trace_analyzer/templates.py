@@ -137,6 +137,7 @@ REQUEST_TEMPLATE = """
 <div>
     <span class="label">REQUEST</span>
     <span class="label {source_class}">{source_label}</span>
+    {internal_label}
     <span class="timestamp">{timestamp}</span>
     <span class="char-count">{request_chars} chars</span>
     {system_prompt_html}

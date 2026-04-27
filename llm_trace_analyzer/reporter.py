@@ -256,11 +256,17 @@ class HTMLReporter:
 
         request_chars = system_prompt_chars + messages_chars + tools_chars
 
+        # 生成内部请求标记
+        internal_label = ""
+        if request.is_internal:
+            internal_label = '<span class="label" style="background: #ff9800; color: white;">Internal</span>'
+
         return REQUEST_TEMPLATE.format(
             timestamp=timestamp_str,
             request_chars=request_chars,
             source_class="subagent" if request.source == "subagent" else "",
             source_label=request.source_label,
+            internal_label=internal_label,
             system_prompt_html=system_prompt_html,
             message_count=len(other_messages),
             messages_chars=messages_chars,

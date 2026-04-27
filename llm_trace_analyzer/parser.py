@@ -157,6 +157,22 @@ class TraceParser:
         messages = body_dict.get("messages", [])
         tools = body_dict.get("tools", [])
 
+        # 判断是否为框架内部请求（如 command_intent）
+        is_internal = False
+        if not tools and len(messages) == 1:
+            first_msg = messages[0]
+            if first_msg.get("role") == "user":
+                content = first_msg.get("content", "")
+                # 检查是否包含框架内部提示关键词
+                internal_keywords = [
+                    "安全工具调用解析器",
+                    "你是一个安全工具调用解析器",
+                    "file_guard.extract",
+                    "command_intent",
+                ]
+                if any(kw in content for kw in internal_keywords):
+                    is_internal = True
+
         return LLMRequest(
             session_id=session_id,
             iteration=iteration,
@@ -165,6 +181,7 @@ class TraceParser:
             body=body_dict,
             messages=messages,
             tools=tools,
+            is_internal=is_internal,
         )
 
     def _parse_response(

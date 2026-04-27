@@ -15,6 +15,7 @@ class LLMRequest:
     tools: List[Dict[str, Any]] = field(default_factory=list)
     source: str = "parent"
     source_label: str = ""
+    is_internal: bool = False  # 是否为框架内部请求（如 command_intent）
 
 
 @dataclass
