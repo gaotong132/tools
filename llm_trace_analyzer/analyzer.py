@@ -419,14 +419,15 @@ class ChainAnalyzer:
     def _short_task_id(self, task_id: str) -> str:
         if not task_id:
             return "unknown"
+        # 优先检查 _fork_agent_（因为 fork_agent session_id 中可能包含 _subagent_）
+        # 例如：xxx_subagent_a57b9eed_fork_agent_35121a76 应取 35121a76
+        if "_fork_agent_" in task_id:
+            parts = task_id.split("_fork_agent_")
+            if len(parts) >= 2:
+                return parts[-1][:12]
         # 新格式：<parent>_subagent_<task_id>
         if "_subagent_" in task_id:
             parts = task_id.split("_subagent_")
-            if len(parts) >= 2:
-                return parts[-1][:12]
-        # 新格式：<parent>_fork_agent_<task_id>
-        if "_fork_agent_" in task_id:
-            parts = task_id.split("_fork_agent_")
             if len(parts) >= 2:
                 return parts[-1][:12]
         # 旧格式 fork_fork_agent_xxxx
