@@ -150,6 +150,19 @@ REQUEST_TEMPLATE = """
         </div>
     </div>
     {tools_html}
+    {new_message_html}
+</div>
+"""
+
+NEW_MESSAGE_TEMPLATE = """
+<div style="margin-top: 10px;">
+    <div class="collapsible expanded" onclick="toggleCollapsible(this)">
+        <span class="toggle-icon rotated">&#9654;</span> New Message ({new_count})
+        <span class="char-count">{new_chars} chars</span>
+    </div>
+    <div class="collapsible-content expanded">
+        {new_messages_html}
+    </div>
 </div>
 """
 

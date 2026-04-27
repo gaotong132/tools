@@ -4,7 +4,7 @@ import html
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .models import AnalysisResult, LLMChain, LLMRequest, LLMResponse, SubagentInfo
 from .templates import (
@@ -12,6 +12,7 @@ from .templates import (
     INDEX_TEMPLATE,
     ITERATION_DETAIL_TEMPLATE,
     JSON_BLOCK_TEMPLATE,
+    NEW_MESSAGE_TEMPLATE,
     REASONING_TEMPLATE,
     REQUEST_TEMPLATE,
     RESPONSE_TEMPLATE,
@@ -164,6 +165,7 @@ class HTMLReporter:
         sorted_items = sorted(paired_items.values(), key=lambda x: x["timestamp"])
 
         iterations_parts: List[str] = []
+        prev_request: Optional[LLMRequest] = None
         for i, item in enumerate(sorted_items):
             iteration_num = i + 1
 
@@ -172,9 +174,10 @@ class HTMLReporter:
             depth_indicator = ""
             if item["request"]:
                 request = item["request"]
-                request_html = self._generate_request_html(request)
+                request_html = self._generate_request_html(request, prev_request)
                 if request.source == "subagent":
                     depth = self._calc_depth_from_label(request.source_label)
+                prev_request = request
 
             response_html = ""
             if item["response"]:
@@ -204,7 +207,7 @@ class HTMLReporter:
         arrows = label.split(" → ")
         return len(arrows) - 1
 
-    def _generate_request_html(self, request: LLMRequest) -> str:
+    def _generate_request_html(self, request: LLMRequest, prev_request: Optional[LLMRequest] = None) -> str:
         system_prompt_html = ""
         system_prompt_chars = 0
         other_messages = []
@@ -246,6 +249,9 @@ class HTMLReporter:
             tools_html=tools_full_html,
         )
 
+        # 生成 New Message HTML
+        new_message_html = self._generate_new_message_html(other_messages, prev_request)
+
         request_chars = system_prompt_chars + messages_chars + tools_chars
 
         return REQUEST_TEMPLATE.format(
@@ -258,6 +264,7 @@ class HTMLReporter:
             messages_chars=messages_chars,
             messages_html=messages_html,
             tools_html=tools_section_html,
+            new_message_html=new_message_html,
         )
 
     def _generate_tool_names_html(self, tools: List) -> str:
@@ -268,6 +275,48 @@ class HTMLReporter:
             if name:
                 items.append(TOOL_NAME_ITEM_TEMPLATE.format(name=name))
         return "\n".join(items)
+
+    def _generate_new_message_html(self, current_messages: List, prev_request: Optional[LLMRequest]) -> str:
+        """生成 New Message 部分 HTML，显示与上一个迭代相比新增的 messages"""
+        # 只比较 user/assistant/tool 类型的 messages（排除所有 system）
+        current_non_system = [m for m in current_messages if m.get("role") != "system"]
+
+        if not prev_request:
+            # 第一个迭代，所有非 system message 都是新的
+            if not current_non_system:
+                return ""
+            new_messages = current_non_system
+        else:
+            # 获取上一个迭代的非 system messages
+            prev_non_system = [m for m in prev_request.messages if m.get("role") != "system"]
+
+            # 找出新增的 messages
+            new_messages = self._find_new_messages(current_non_system, prev_non_system)
+
+        if not new_messages:
+            return ""
+
+        new_messages_json = json.dumps(new_messages, indent=2, ensure_ascii=False)
+        new_chars = len(new_messages_json)
+        new_messages_html = self._make_json_block(new_messages)
+
+        return NEW_MESSAGE_TEMPLATE.format(
+            new_count=len(new_messages),
+            new_chars=new_chars,
+            new_messages_html=new_messages_html,
+        )
+
+    def _find_new_messages(self, current_messages: List, prev_messages: List) -> List:
+        """找出新增的 messages"""
+        # 简单策略：新增的 messages 是最后几条（数量差）
+        prev_count = len(prev_messages)
+        curr_count = len(current_messages)
+
+        if curr_count <= prev_count:
+            return []
+
+        # 返回最后新增的 messages
+        return current_messages[prev_count:]
 
     def _generate_response_html(self, response: LLMResponse) -> str:
         timestamp_str = self._format_timestamp(response.timestamp)
