@@ -375,8 +375,8 @@ SESSION_DETAIL_TEMPLATE = """
 .timing-item {{ display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid #e0e0e0; cursor: pointer; }}
 .timing-item:hover {{ background: #f8f9fa; }}
 .timing-item-num {{ width: 60px; font-weight: bold; color: #4a90d9; }}
-.timing-item-times {{ width: 220px; display: flex; gap: 10px; }}
-.timing-item-time {{ font-size: 12px; }}
+.timing-item-times {{ width: 260px; display: flex; }}
+.timing-item-time {{ font-size: 12px; width: 85px; }}
 .timing-item-time.llm {{ color: #388e3c; }}
 .timing-item-time.tool {{ color: #f57c00; }}
 .timing-item-time.total {{ color: #4a90d9; font-weight: bold; }}
@@ -532,9 +532,9 @@ TIMING_ITEM_TEMPLATE = """
 <div class="timing-item" data-num="{iteration_num}" data-llm="{llm_seconds}" data-tool="{tool_seconds}" data-total="{total_seconds}" onclick="jumpToIteration({iteration_num})">
     <div class="timing-item-num">#{iteration_num}</div>
     <div class="timing-item-times">
+        <span class="timing-item-time total">Total: {total_duration}</span>
         <span class="timing-item-time llm">LLM: {llm_duration}</span>
         <span class="timing-item-time tool">Tool: {tool_duration}</span>
-        <span class="timing-item-time total">Total: {total_duration}</span>
     </div>
     <div class="timing-item-content" title="{content_full}">{content_preview}</div>
 </div>
