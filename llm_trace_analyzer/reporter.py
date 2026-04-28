@@ -195,7 +195,9 @@ class HTMLReporter:
                 session_id = request.session_id
                 # 获取该 session 的 prev_request
                 prev_request = prev_requests_by_session.get(session_id)
-                request_html = self._generate_request_html(request, prev_request, global_tool_name_map)
+                # 判断是否是子 Agent 的第一次请求（继承父 Agent context，不应显示 Tool Call Results）
+                is_subagent_first_request = request.source == "subagent" and prev_request is None
+                request_html = self._generate_request_html(request, prev_request, global_tool_name_map, is_subagent_first_request)
                 if request.source == "subagent":
                     depth = self._calc_depth_from_label(request.source_label)
                 # 内部请求不更新 prev_request，避免影响 Tool Call Results 计算
@@ -242,7 +244,7 @@ class HTMLReporter:
         arrows = label.split(" → ")
         return len(arrows) - 1
 
-    def _generate_request_html(self, request: LLMRequest, prev_request: Optional[LLMRequest] = None, global_tool_name_map: Dict[str, str] = None) -> str:
+    def _generate_request_html(self, request: LLMRequest, prev_request: Optional[LLMRequest] = None, global_tool_name_map: Dict[str, str] = None, is_subagent_first_request: bool = False) -> str:
         system_prompt_html = ""
         system_prompt_chars = 0
         other_messages = []
@@ -285,7 +287,7 @@ class HTMLReporter:
         )
 
         # 生成 Tool Call Results HTML
-        new_message_html = self._generate_new_message_html(other_messages, prev_request, global_tool_name_map or {})
+        new_message_html = self._generate_new_message_html(other_messages, prev_request, global_tool_name_map or {}, is_subagent_first_request)
 
         request_chars = system_prompt_chars + messages_chars + tools_chars
 
@@ -317,14 +319,17 @@ class HTMLReporter:
                 items.append(TOOL_NAME_ITEM_TEMPLATE.format(name=name))
         return "\n".join(items)
 
-    def _generate_new_message_html(self, current_messages: List, prev_request: Optional[LLMRequest], global_tool_name_map: Dict[str, str]) -> str:
+    def _generate_new_message_html(self, current_messages: List, prev_request: Optional[LLMRequest], global_tool_name_map: Dict[str, str], is_subagent_first_request: bool = False) -> str:
         """生成 ToolResult 部分 HTML，显示与上一个迭代相比新增的工具调用结果"""
         # 只显示 tool 类型的 messages（工具调用结果）
         # assistant 是上一轮 RESPONSE 的输出，user 是用户输入，不应算作 REQUEST 的新增
         current_tools = [m for m in current_messages if m.get("role") == "tool"]
 
         if not prev_request:
-            # 第一个迭代，所有 tool message 都是新的
+            # 子 Agent 的第一次请求继承了父 Agent 的 context，其中的 tool messages 不应算作新增
+            if is_subagent_first_request:
+                return ""
+            # 主 session 的第一个迭代，所有 tool message 都是新的
             if not current_tools:
                 return ""
             new_messages = current_tools
