@@ -364,6 +364,23 @@ SESSION_DETAIL_TEMPLATE = """
 .tool-view-full.expanded {{ display: block; }}
 .tool-names-grid {{ display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; background: #f8f9fa; border-radius: 4px; }}
 .tool-name-item {{ background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 3px; font-size: 12px; font-family: monospace; }}
+.timing-panel {{ background: white; border-radius: 8px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+.timing-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }}
+.timing-header h3 {{ color: #4a90d9; }}
+.timing-controls {{ display: flex; gap: 10px; }}
+.sort-btn {{ padding: 4px 12px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }}
+.sort-btn:hover {{ background: #d0d0d0; }}
+.sort-btn.active {{ background: #4a90d9; color: white; }}
+.timing-list {{ max-height: 400px; overflow-y: auto; }}
+.timing-item {{ display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid #e0e0e0; cursor: pointer; }}
+.timing-item:hover {{ background: #f8f9fa; }}
+.timing-item-num {{ width: 60px; font-weight: bold; color: #4a90d9; }}
+.timing-item-times {{ width: 150px; display: flex; gap: 15px; }}
+.timing-item-time {{ font-size: 12px; }}
+.timing-item-time.llm {{ color: #388e3c; }}
+.timing-item-time.tool {{ color: #f57c00; }}
+.timing-item-content {{ flex: 1; font-size: 13px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.timing-item-content:hover {{ overflow: visible; white-space: normal; }}
     </style>
 </head>
 <body>
@@ -374,6 +391,7 @@ SESSION_DETAIL_TEMPLATE = """
             <div class="meta">Model: {model_name} | Iterations: {total_iterations} | {start_time} - {end_time}</div>
             <div class="meta">Duration: {session_duration} | LLM: {total_llm_duration} | Tool: {total_tool_duration} | Avg LLM: {avg_llm_per_iter}</div>
         </div>
+        {timing_list_html}
         {subagents_tree_html}
         {iterations_html}
     </div>
@@ -425,6 +443,34 @@ SESSION_DETAIL_TEMPLATE = """
                 btn.textContent = 'Toggle: Full';
             }}
         }}
+        function sortTimingList(sortType) {{
+            const list = document.getElementById('timing-list');
+            const items = Array.from(list.querySelectorAll('.timing-item'));
+
+            // 更新按钮状态
+            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.sort-btn[data-sort="${{sortType}}"]`).classList.add('active');
+
+            if (sortType === 'iteration') {{
+                items.sort((a, b) => parseInt(a.dataset.num) - parseInt(b.dataset.num));
+            }} else if (sortType === 'llm') {{
+                items.sort((a, b) => parseFloat(b.dataset.llm) - parseFloat(a.dataset.llm));
+            }} else if (sortType === 'tool') {{
+                items.sort((a, b) => parseFloat(b.dataset.tool) - parseFloat(a.dataset.tool));
+            }} else if (sortType === 'total') {{
+                items.sort((a, b) => parseFloat(b.dataset.total) - parseFloat(a.dataset.total));
+            }}
+
+            items.forEach(item => list.appendChild(item));
+        }}
+        function jumpToIteration(iterNum) {{
+            const iterationBlock = document.querySelector(`.iteration-block[data-iteration="${{iterNum}}"]`);
+            if (iterationBlock) {{
+                iterationBlock.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                iterationBlock.style.boxShadow = '0 0 0 3px #4a90d9';
+                setTimeout(() => iterationBlock.style.boxShadow = '', 2000);
+            }}
+        }}
     </script>
 </body>
 </html>
@@ -446,7 +492,7 @@ SUBAGENT_NODE_TEMPLATE = """
 """
 
 ITERATION_DETAIL_TEMPLATE = """
-<div class="iteration-block depth-{depth}">
+<div class="iteration-block depth-{depth}" data-iteration="{iteration_num}">
     <div class="iteration-header">
         Iteration {iteration_num} {depth_indicator}
         <span class="time-stats">LLM: {llm_duration} | Tool: {tool_duration}</span>
@@ -457,6 +503,38 @@ ITERATION_DETAIL_TEMPLATE = """
         {request_html}
         {response_html}
     </div>
+</div>
+"""
+
+TIMING_LIST_TEMPLATE = """
+<div class="timing-panel">
+    <div class="collapsible" onclick="toggleCollapsible(this)">
+        <span class="toggle-icon rotated">&#9654;</span> Timing Overview ({total_iterations} iterations)
+    </div>
+    <div class="collapsible-content expanded">
+        <div class="timing-header">
+            <div class="timing-controls">
+                <button class="sort-btn active" data-sort="iteration" onclick="sortTimingList('iteration')">Sort: Iteration</button>
+                <button class="sort-btn" data-sort="llm" onclick="sortTimingList('llm')">Sort: LLM Time</button>
+                <button class="sort-btn" data-sort="tool" onclick="sortTimingList('tool')">Sort: Tool Time</button>
+                <button class="sort-btn" data-sort="total" onclick="sortTimingList('total')">Sort: Total</button>
+            </div>
+        </div>
+        <div class="timing-list" id="timing-list">
+            {timing_items_html}
+        </div>
+    </div>
+</div>
+"""
+
+TIMING_ITEM_TEMPLATE = """
+<div class="timing-item" data-num="{iteration_num}" data-llm="{llm_seconds}" data-tool="{tool_seconds}" data-total="{total_seconds}" onclick="jumpToIteration({iteration_num})">
+    <div class="timing-item-num">#{iteration_num}</div>
+    <div class="timing-item-times">
+        <span class="timing-item-time llm">LLM: {llm_duration}</span>
+        <span class="timing-item-time tool">Tool: {tool_duration}</span>
+    </div>
+    <div class="timing-item-content" title="{content_full}">{content_preview}</div>
 </div>
 """
 

@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .models import AnalysisResult, LLMChain, LLMRequest, LLMResponse, SubagentInfo
+from .models import AnalysisResult, IterationTiming, LLMChain, LLMRequest, LLMResponse, SubagentInfo
 from .templates import (
     CONTENT_TEMPLATE,
     INDEX_TEMPLATE,
@@ -20,6 +20,8 @@ from .templates import (
     SUBAGENT_NODE_TEMPLATE,
     SUBAGENT_TREE_TEMPLATE,
     SYSTEM_PROMPT_TEMPLATE,
+    TIMING_ITEM_TEMPLATE,
+    TIMING_LIST_TEMPLATE,
     TOOL_CALLS_TEMPLATE,
     TOOL_NAME_ITEM_TEMPLATE,
     TOOL_RESULT_TEMPLATE,
@@ -88,6 +90,7 @@ class HTMLReporter:
 
         iterations_html = self._generate_iterations_html(chain)
         subagents_tree_html = self._generate_subagents_tree_html(chain)
+        timing_list_html = self._generate_timing_list_html(chain)
 
         # 计算平均值
         num_iters = len(chain.iteration_timings)
@@ -104,8 +107,9 @@ class HTMLReporter:
             total_llm_duration=self._format_duration(chain.total_llm_duration_seconds),
             total_tool_duration=self._format_duration(chain.total_tool_duration_seconds),
             avg_llm_per_iter=self._format_duration(avg_llm),
-            iterations_html=iterations_html,
+            timing_list_html=timing_list_html,
             subagents_tree_html=subagents_tree_html,
+            iterations_html=iterations_html,
         )
 
         with open(detail_file, "w", encoding="utf-8") as f:
@@ -133,6 +137,49 @@ class HTMLReporter:
         return SUBAGENT_TREE_TEMPLATE.format(
             subagent_count=len(chain.subagents),
             tree_nodes_html="\n".join(tree_nodes),
+        )
+
+    def _generate_timing_list_html(self, chain: LLMChain) -> str:
+        """生成迭代耗时列表 HTML"""
+        if not chain.iteration_timings:
+            return ""
+
+        # 构建 iteration_num -> response 的映射，获取 content
+        response_map: Dict[int, LLMResponse] = {}
+        for resp in chain.responses:
+            # 按 timestamp 找对应的 iteration_num
+            for timing in chain.iteration_timings:
+                if abs(resp.timestamp - timing.response_timestamp) < 1.0:
+                    response_map[timing.iteration_num] = resp
+                    break
+
+        timing_items: List[str] = []
+        for timing in chain.iteration_timings:
+            # 获取 response content
+            resp = response_map.get(timing.iteration_num)
+            content = resp.content if resp else ""
+            # 截断预览（最多 80 字符）
+            content_preview = content[:80] + "..." if len(content) > 80 else content
+            if not content_preview:
+                content_preview = "(no content)"
+
+            total_seconds = timing.llm_call_duration + timing.tool_processing_duration
+
+            item_html = TIMING_ITEM_TEMPLATE.format(
+                iteration_num=timing.iteration_num,
+                llm_seconds=timing.llm_call_duration,
+                tool_seconds=timing.tool_processing_duration,
+                total_seconds=total_seconds,
+                llm_duration=self._format_duration(timing.llm_call_duration),
+                tool_duration=self._format_duration(timing.tool_processing_duration),
+                content_preview=html.escape(content_preview),
+                content_full=html.escape(content),
+            )
+            timing_items.append(item_html)
+
+        return TIMING_LIST_TEMPLATE.format(
+            total_iterations=len(chain.iteration_timings),
+            timing_items_html="\n".join(timing_items),
         )
 
     def _get_requests_for_subagent(self, chain: LLMChain, session_id: str) -> List[LLMRequest]:
