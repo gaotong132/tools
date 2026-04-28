@@ -172,6 +172,7 @@ class HTMLReporter:
                 total_seconds=total_seconds,
                 llm_duration=self._format_duration(timing.llm_call_duration),
                 tool_duration=self._format_duration(timing.tool_processing_duration),
+                total_duration=self._format_duration(total_seconds),
                 content_preview=html.escape(content_preview),
                 content_full=html.escape(content),
             )
