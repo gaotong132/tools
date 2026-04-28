@@ -149,7 +149,7 @@ lt -v
   - 可滚动查看长内容
 
 **默认日志路径：**
-- 日志文件：`~/.office-claw/.jiuwenclaw/agent/.logs/full.log`
+- 日志文件：`~/.office-claw/.jiuwenclaw/service_default/.logs/full.log`
 - 配置文件：`~/.office-claw/.jiuwenclaw/config/config.yaml`
 
 **作为库使用：**
