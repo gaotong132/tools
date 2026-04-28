@@ -28,6 +28,7 @@ HTML_TEMPLATE = """
         .iteration-block {{ border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 15px; }}
         .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; position: relative; }}
         .iteration-header .copy-btn {{ position: static; margin-left: 15px; padding: 4px 12px; opacity: 0.9; }}
+        .time-stats {{ margin-left: 15px; color: #666; font-size: 12px; font-weight: normal; }}
         .iteration-content {{ padding: 15px; }}
         .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 15px; margin: 10px 0; }}
         .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre; overflow-x: auto; overflow-y: auto; min-height: 200px; max-height: 400px; width: 100%; resize: vertical; border: none; background: transparent; }}
@@ -273,6 +274,8 @@ INDEX_TEMPLATE = """
             <span><strong>{total_sessions}</strong> sessions</span>
             <span><strong>{total_requests}</strong> requests</span>
             <span><strong>{total_iterations}</strong> iterations</span>
+            <span><strong>{total_duration}</strong> total time</span>
+            <span><strong>{avg_llm_time}</strong> avg LLM</span>
         </div>
         <table>
             <tr>
@@ -329,6 +332,7 @@ SESSION_DETAIL_TEMPLATE = """
         .iteration-block.depth-3 {{ margin-left: 60px; border-left: 3px solid #ba68c8; }}
         .iteration-header {{ background: #f8f9fa; padding: 10px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0; position: relative; }}
         .iteration-header .copy-btn {{ position: static; margin-left: 15px; padding: 4px 12px; opacity: 0.9; }}
+        .time-stats {{ margin-left: 15px; color: #666; font-size: 12px; font-weight: normal; }}
         .iteration-content {{ padding: 15px; }}
         .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 0; margin: 10px 0; overflow: hidden; position: relative; }}
         .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre-wrap; word-break: break-all; overflow-x: auto; overflow-y: auto; max-height: 400px; padding: 15px; padding-top: 35px; padding-right: 50px; margin: 0; }}
@@ -368,6 +372,7 @@ SESSION_DETAIL_TEMPLATE = """
         <div class="header">
             <h1>Session: {session_id_short}</h1>
             <div class="meta">Model: {model_name} | Iterations: {total_iterations} | {start_time} - {end_time}</div>
+            <div class="meta">Duration: {session_duration} | LLM: {total_llm_duration} | Tool: {total_tool_duration} | Avg LLM: {avg_llm_per_iter}</div>
         </div>
         {subagents_tree_html}
         {iterations_html}
@@ -444,6 +449,7 @@ ITERATION_DETAIL_TEMPLATE = """
 <div class="iteration-block depth-{depth}">
     <div class="iteration-header">
         Iteration {iteration_num} {depth_indicator}
+        <span class="time-stats">LLM: {llm_duration} | Tool: {tool_duration}</span>
         {copy_body_btn}
         <pre style="display: none;" id="{body_id}">{body_json}</pre>
     </div>

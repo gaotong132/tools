@@ -74,6 +74,8 @@ class HTMLReporter:
             total_sessions=stats.total_sessions,
             total_requests=stats.total_requests,
             total_iterations=stats.total_iterations,
+            total_duration=self._format_duration(stats.total_duration_seconds),
+            avg_llm_time=self._format_duration(stats.avg_llm_time_seconds),
             session_rows="\n".join(session_rows),
         )
 
@@ -87,6 +89,10 @@ class HTMLReporter:
         iterations_html = self._generate_iterations_html(chain)
         subagents_tree_html = self._generate_subagents_tree_html(chain)
 
+        # 计算平均值
+        num_iters = len(chain.iteration_timings)
+        avg_llm = chain.total_llm_duration_seconds / num_iters if num_iters > 0 else 0
+
         html_content = SESSION_DETAIL_TEMPLATE.format(
             session_id_short=short_id,
             session_id=chain.session_id,
@@ -94,6 +100,10 @@ class HTMLReporter:
             total_iterations=chain.total_iterations,
             start_time=self._format_timestamp(chain.start_time),
             end_time=self._format_timestamp(chain.end_time),
+            session_duration=self._format_duration(chain.end_time - chain.start_time),
+            total_llm_duration=self._format_duration(chain.total_llm_duration_seconds),
+            total_tool_duration=self._format_duration(chain.total_tool_duration_seconds),
+            avg_llm_per_iter=self._format_duration(avg_llm),
             iterations_html=iterations_html,
             subagents_tree_html=subagents_tree_html,
         )
@@ -152,6 +162,14 @@ class HTMLReporter:
                     tc_name = tc.get("name", "") or tc.get("function", {}).get("name", "")
                     if tc_id and tc_name:
                         global_tool_name_map[tc_id] = tc_name
+
+        # 构建 iteration_num -> timing 映射
+        timing_map: Dict[int, Dict] = {}
+        for timing in chain.iteration_timings:
+            timing_map[timing.iteration_num] = {
+                "llm_duration": timing.llm_call_duration,
+                "tool_duration": timing.tool_processing_duration,
+            }
 
         # 按 (session_id, iteration) 配对请求和响应
         paired_items: Dict[Tuple[str, int], Dict] = {}
@@ -223,10 +241,17 @@ class HTMLReporter:
             if depth > 0:
                 depth_indicator = f"(Depth {depth})"
 
+            # 获取时间统计
+            timing_info = timing_map.get(iteration_num, {})
+            llm_duration_str = self._format_duration(timing_info.get("llm_duration", 0))
+            tool_duration_str = self._format_duration(timing_info.get("tool_duration", 0))
+
             iteration_html = ITERATION_DETAIL_TEMPLATE.format(
                 iteration_num=iteration_num,
                 depth=depth,
                 depth_indicator=depth_indicator,
+                llm_duration=llm_duration_str,
+                tool_duration=tool_duration_str,
                 copy_body_btn=copy_body_btn,
                 body_id=body_id,
                 body_json=body_json,
@@ -461,6 +486,19 @@ class HTMLReporter:
             return "N/A"
         dt = datetime.fromtimestamp(timestamp)
         return dt.strftime("%H:%M:%S")
+
+    def _format_duration(self, seconds: float) -> str:
+        """格式化时长显示"""
+        if seconds <= 0:
+            return "N/A"
+        if seconds < 1:
+            return f"{seconds * 1000:.0f}ms"
+        elif seconds < 60:
+            return f"{seconds:.1f}s"
+        else:
+            minutes = int(seconds / 60)
+            secs = seconds % 60
+            return f"{minutes}m {secs:.0f}s"
 
     def _convert_tools_to_openai_format(self, body: dict) -> dict:
         """将 tools 从旧格式转换为标准 OpenAI 格式

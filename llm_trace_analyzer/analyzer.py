@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .models import (
     AnalysisResult,
+    IterationTiming,
     LLMChain,
     LLMRequest,
     LLMResponse,
@@ -310,6 +311,11 @@ class ChainAnalyzer:
         start_time = all_requests[0].timestamp if all_requests else 0
         end_time = all_responses[-1].timestamp if all_responses else 0
 
+        # 计算时间统计
+        iteration_timings = self._compute_iteration_timings(all_requests, all_responses)
+        total_llm_duration = sum(t.llm_call_duration for t in iteration_timings)
+        total_tool_duration = sum(t.tool_processing_duration for t in iteration_timings)
+
         return LLMChain(
             session_id=session_id,
             model_name=model_name,
@@ -320,7 +326,88 @@ class ChainAnalyzer:
             total_iterations=len(all_requests),
             subagents=subagent_infos,
             is_subagent=False,
+            iteration_timings=iteration_timings,
+            total_llm_duration_seconds=total_llm_duration,
+            total_tool_duration_seconds=total_tool_duration,
         )
+
+    def _compute_iteration_timings(
+        self,
+        requests: List[LLMRequest],
+        responses: List[LLMResponse],
+    ) -> List[IterationTiming]:
+        """计算每个迭代的时间统计"""
+        timings: List[IterationTiming] = []
+
+        # 按 (session_id, iteration) 配对
+        paired: Dict[Tuple[str, int], Dict] = {}
+
+        for req in requests:
+            key = (req.session_id, req.iteration)
+            if key not in paired:
+                paired[key] = {"request": None, "response": None, "timestamp": 0}
+            paired[key]["request"] = req
+            paired[key]["timestamp"] = req.timestamp
+
+        for resp in responses:
+            key = (resp.session_id, resp.iteration)
+            if key not in paired:
+                paired[key] = {"request": None, "response": None, "timestamp": 0}
+            paired[key]["response"] = resp
+            if paired[key]["timestamp"] == 0:
+                paired[key]["timestamp"] = resp.timestamp
+
+        # 按 timestamp 排序
+        sorted_items = sorted(paired.values(), key=lambda x: x["timestamp"])
+
+        # 构建 session_id -> prev_iteration 的映射，用于判断子 Agent 第一次请求
+        session_first_iteration: Dict[str, int] = {}
+        for i, item in enumerate(sorted_items):
+            req = item["request"]
+            if req:
+                sid = req.session_id
+                if sid not in session_first_iteration:
+                    session_first_iteration[sid] = i
+
+        for i, item in enumerate(sorted_items):
+            req = item["request"]
+            resp = item["response"]
+
+            if not req and not resp:
+                continue
+
+            timing = IterationTiming(
+                iteration_num=i + 1,
+                session_id=req.session_id if req else (resp.session_id if resp else ""),
+                request_timestamp=req.timestamp if req else 0,
+                response_timestamp=resp.timestamp if resp else 0,
+            )
+
+            # 计算 llm_call_duration
+            if req and resp:
+                timing.llm_call_duration = resp.timestamp - req.timestamp
+
+            # 计算 tool_processing_duration（查找下一个同 session 的请求）
+            is_first_of_session = (session_first_iteration.get(timing.session_id) == i)
+
+            if resp and i < len(sorted_items) - 1:
+                # 找下一个同 session 的请求
+                for j in range(i + 1, len(sorted_items)):
+                    next_item = sorted_items[j]
+                    next_req = next_item["request"]
+                    if next_req and next_req.session_id == timing.session_id:
+                        timing.tool_processing_duration = next_req.timestamp - resp.timestamp
+                        break
+                    # 遇到不同 session 的请求，停止查找
+                    if next_req and next_req.session_id != timing.session_id:
+                        break
+
+            # 判断是否为最后一次迭代
+            timing.is_last_iteration = (timing.tool_processing_duration == 0)
+
+            timings.append(timing)
+
+        return timings
 
     def _compute_subagent_depth(self, task_id: str) -> Tuple[int, List[str], str]:
         """计算 subAgent 的嵌套深度和调用路径"""
@@ -458,7 +545,13 @@ class ChainAnalyzer:
     def _compute_statistics(self, sessions: Dict[str, LLMChain]) -> Statistics:
         stats = Statistics()
 
-        stats.total_sessions = len([s for s in sessions.values() if not s.is_subagent])
+        parent_chains = [s for s in sessions.values() if not s.is_subagent]
+        stats.total_sessions = len(parent_chains)
+
+        total_llm_time = 0.0
+        total_tool_time = 0.0
+        total_duration = 0.0
+        total_iterations_count = 0
 
         for chain in sessions.values():
             if not chain.is_subagent:
@@ -468,5 +561,23 @@ class ChainAnalyzer:
 
                 model = chain.model_name
                 stats.sessions_by_model[model] = stats.sessions_by_model.get(model, 0) + 1
+
+                # 时间统计
+                total_llm_time += chain.total_llm_duration_seconds
+                total_tool_time += chain.total_tool_duration_seconds
+                total_iterations_count += len(chain.iteration_timings)
+
+                # Session 总耗时
+                if chain.start_time and chain.end_time:
+                    total_duration += chain.end_time - chain.start_time
+
+        stats.total_duration_seconds = total_duration
+        stats.total_llm_time_seconds = total_llm_time
+        stats.total_tool_time_seconds = total_tool_time
+
+        # 计算平均值
+        if total_iterations_count > 0:
+            stats.avg_llm_time_seconds = total_llm_time / total_iterations_count
+            stats.avg_tool_time_seconds = total_tool_time / total_iterations_count
 
         return stats

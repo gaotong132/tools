@@ -5,6 +5,18 @@ from typing import Any, Dict, List
 
 
 @dataclass
+class IterationTiming:
+    """单个迭代的时间统计"""
+    iteration_num: int
+    session_id: str
+    request_timestamp: float = 0.0
+    response_timestamp: float = 0.0
+    llm_call_duration: float = 0.0  # 模型调用时间（秒）
+    tool_processing_duration: float = 0.0  # 工具调用+思考时间（秒）
+    is_last_iteration: bool = False
+
+
+@dataclass
 class LLMRequest:
     session_id: str
     iteration: int
@@ -53,6 +65,10 @@ class LLMChain:
     total_iterations: int = 0
     subagents: List[SubagentInfo] = field(default_factory=list)
     is_subagent: bool = False
+    # 时间统计
+    iteration_timings: List[IterationTiming] = field(default_factory=list)
+    total_llm_duration_seconds: float = 0.0
+    total_tool_duration_seconds: float = 0.0
 
 
 @dataclass
@@ -62,6 +78,12 @@ class Statistics:
     total_responses: int = 0
     total_iterations: int = 0
     sessions_by_model: Dict[str, int] = field(default_factory=dict)
+    # 时间统计
+    total_duration_seconds: float = 0.0  # 所有 session 总耗时
+    total_llm_time_seconds: float = 0.0  # 模型调用总时间
+    total_tool_time_seconds: float = 0.0  # 工具调用+思考总时间
+    avg_llm_time_seconds: float = 0.0  # 平均每次模型调用耗时
+    avg_tool_time_seconds: float = 0.0  # 平均每次工具调用+思考耗时
 
 
 @dataclass(init=False)
