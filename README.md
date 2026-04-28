@@ -116,7 +116,7 @@ logging:
 **使用方法：**
 
 ```bash
-# 自动分析最新日志（默认路径 ~/.office-claw/.jiuwenclaw/agent/.logs/full.log）
+# 自动分析最新日志（默认路径 ~/.office-claw/.jiuwenclaw/service_default/.logs/full.log）
 lt
 
 # 分析后自动在浏览器打开报告
@@ -157,7 +157,7 @@ lt -v
 ```python
 from llm_trace_analyzer import LLMTraceAnalyzer
 
-analyzer = LLMTraceAnalyzer("app.log")
+analyzer = LLMTraceAnalyzer("full.log")
 analyzer.run(output_path="trace_report", verbose=True)  # 生成 trace_report/ 目录
 ```
 
