@@ -93,31 +93,40 @@ analyzer.run(output_path="report.html", verbose=True)
 
 **前置要求：**
 
-OfficeClaw 需要开启 DEBUG 级别日志才能记录 `LLM_IO_TRACE`。在 OfficeClaw 安装目录下的 `.env` 文件中添加：
+OfficeClaw 需要开启 DEBUG 级别日志才能记录 `LLM_IO_TRACE`。修改配置文件：
 
-```bash
-LOG_LEVEL=debug
+```yaml
+# 配置文件路径：<用户目录>/.office-claw/.jiuwenclaw/config/config.yaml
+logging:
+  level: DEBUG
+  console_level: INFO
+  gateway: INFO
+  channel: INFO
+  agent_server: DEBUG
+  full: DEBUG
 ```
 
-Windows 默认路径：`<OfficeClaw安装目录>\.env`（如 `C:\Users\<用户名>\AppData\Local\Programs\OfficeClaw\.env`）
-
 **功能特性：**
-- 解析 `app.log` 中的 `LLM_IO_TRACE` 日志
+- 解析 `full.log` 中的 `LLM_IO_TRACE` 日志
 - 合并分片请求体（body_part 1/N → N/N）
 - 关联请求（messages+tools）与响应（content+tool_calls）
 - 支持按 session 筛选
+- 自动转换 tools 格式为标准 OpenAI 格式（便于 Postman 调试）
 
 **使用方法：**
 
 ```bash
-# 自动分析最新日志
+# 自动分析最新日志（默认路径 ~/.office-claw/.jiuwenclaw/agent/.logs/full.log）
 lt
+
+# 分析后自动在浏览器打开报告
+lt -O
 
 # 分析指定日志文件
 lt <log_file_path>
 
-# 指定输出文件
-lt <log_file_path> -o my_trace_report.html
+# 指定输出目录
+lt <log_file_path> -o my_trace_report
 
 # 筛选特定 session
 lt <log_file_path> --session <session_id>
@@ -133,8 +142,15 @@ lt -v
   - 按 iteration 展示请求→响应链路
   - 完整 JSON 展开：messages、tools、response
   - reasoning_content（推理过程）
-  - tool_calls 详情
+  - tool_calls 详情及工具名称摘要
+  - Tool Call Results：显示新增的工具调用结果及工具名称
+  - Copy Body 按钮：一键复制请求体（自动转换为标准 OpenAI 格式）
+  - Subagents 树状展示：显示 spawn_subagent/fork_agent 调用链
   - 可滚动查看长内容
+
+**默认日志路径：**
+- 日志文件：`~/.office-claw/.jiuwenclaw/agent/.logs/full.log`
+- 配置文件：`~/.office-claw/.jiuwenclaw/config/config.yaml`
 
 **作为库使用：**
 
