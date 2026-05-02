@@ -74,7 +74,7 @@ class TestSessionFiltering:
         loader = LogLoader(str(SAMPLE_LOG))
         traces = loader.load()
 
-        filtered = analyzer._filter_traces_for_session(traces, EXPECTED_SESSION_ID, loader)
+        filtered = analyzer._filter_traces_for_session(traces, EXPECTED_SESSION_ID)
 
         # 过滤后的 traces 应只包含主 session 和 subagent
         session_ids = set(t["session_id"] for t in filtered)
@@ -89,17 +89,9 @@ class TestSessionFiltering:
 
         loader = LogLoader(str(SAMPLE_LOG))
         traces = loader.load()
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
 
         collected = set()
-        analyzer._collect_subagent_sessions(
-            EXPECTED_SESSION_ID,
-            tool_call_events,
-            subagent_start_events,
-            traces,
-            collected,
-        )
+        analyzer._collect_subagent_sessions(EXPECTED_SESSION_ID, traces, collected)
 
         # 应收集到 subagent sessions
         assert len(collected) > 0
@@ -114,17 +106,9 @@ class TestSessionFiltering:
 
         loader = LogLoader(str(SAMPLE_LOG))
         traces = loader.load()
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
 
         collected = set()
-        analyzer._collect_subagent_sessions(
-            EXPECTED_SESSION_ID,
-            tool_call_events,
-            subagent_start_events,
-            traces,
-            collected,
-        )
+        analyzer._collect_subagent_sessions(EXPECTED_SESSION_ID, traces, collected)
 
         # 新格式：session_id 包含父 session
         for sid in collected:

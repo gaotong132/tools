@@ -27,12 +27,7 @@ class TestChainAnalyzer:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         return analyzer.analyze()
 
     def test_analyze_returns_result(self, analysis_result):
@@ -133,12 +128,7 @@ class TestChainAnalyzerSubagentDepth:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        return ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        return ChainAnalyzer(requests, responses)
 
     def test_compute_subagent_depth(self, analyzer):
         """测试深度计算"""
@@ -191,12 +181,7 @@ class TestChainAnalyzerTiming:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         result = analyzer.analyze()
 
         chain = result.sessions.get(EXPECTED_SESSION_ID)

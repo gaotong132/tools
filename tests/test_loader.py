@@ -103,23 +103,3 @@ class TestLogLoader:
 
         model_names = set(t["model_name"] for t in traces)
         assert "glm-5" in model_names
-
-
-class TestLogLoaderEvents:
-    """测试其他事件加载"""
-
-    def test_load_tool_call_events(self):
-        """测试 ToolCall 事件加载"""
-        loader = LogLoader(str(SAMPLE_LOG))
-        events = loader.load_tool_call_events()
-
-        # 精简日志不含 ToolCall INFO 日志
-        assert isinstance(events, list)
-
-    def test_load_subagent_start_events(self):
-        """测试 Subagent start 事件加载"""
-        loader = LogLoader(str(SAMPLE_LOG))
-        events = loader.load_subagent_start_events()
-
-        # 精简日志不含 Subagent INFO 日志
-        assert isinstance(events, list)

@@ -37,12 +37,7 @@ class TestFullPipeline:
         assert len(responses) > 0
 
         # 3. 分析链路
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         result = analyzer.analyze()
         assert len(result.sessions) > 0
 
@@ -77,12 +72,7 @@ class TestExpectedResults:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         result = analyzer.analyze()
 
         chain = result.sessions.get(EXPECTED_SESSION_ID)
@@ -97,12 +87,7 @@ class TestExpectedResults:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         result = analyzer.analyze()
 
         # 主 session + subagents 合并为 1 个 chain
@@ -115,12 +100,7 @@ class TestExpectedResults:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         result = analyzer.analyze()
 
         chain = result.sessions.get(EXPECTED_SESSION_ID)
@@ -133,12 +113,7 @@ class TestExpectedResults:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         result = analyzer.analyze()
 
         chain = result.sessions.get(EXPECTED_SESSION_ID)
@@ -163,12 +138,7 @@ class TestReportContent:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         result = analyzer.analyze()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -190,12 +160,7 @@ class TestReportContent:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         result = analyzer.analyze()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -218,12 +183,7 @@ class TestReportContent:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         result = analyzer.analyze()
 
         chain = result.sessions.get(EXPECTED_SESSION_ID)

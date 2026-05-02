@@ -27,12 +27,7 @@ class TestHTMLReporter:
         parser = TraceParser(traces)
         requests, responses = parser.parse()
 
-        tool_call_events = loader.load_tool_call_events()
-        subagent_start_events = loader.load_subagent_start_events()
-
-        analyzer = ChainAnalyzer(
-            requests, responses, tool_call_events, subagent_start_events
-        )
+        analyzer = ChainAnalyzer(requests, responses)
         result = analyzer.analyze()
 
         return result

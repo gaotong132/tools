@@ -18,13 +18,9 @@ class ChainAnalyzer:
         self,
         requests: Dict[str, List[LLMRequest]],
         responses: Dict[str, List[LLMResponse]],
-        tool_call_events: List[Dict[str, Any]],
-        subagent_start_events: List[Dict[str, Any]],
     ):
         self.requests = requests
         self.responses = responses
-        self.tool_call_events = tool_call_events
-        self.subagent_start_events = subagent_start_events
         self._parent_to_task_ids: Dict[str, List[Tuple[str, float]]] = {}
         self._task_id_to_parent: Dict[str, str] = {}
 
@@ -62,10 +58,6 @@ class ChainAnalyzer:
         return result
 
     def _match_spawn_calls_to_task_ids(self) -> None:
-        # 处理 spawn_subagent 和 fork_agent
-        spawn_calls = [e for e in self.tool_call_events if e.get("tool_name") == "spawn_subagent"]
-        fork_calls = [e for e in self.tool_call_events if e.get("tool_name") == "fork_agent"]
-
         # 新格式：从 session_id 直接提取父子关系
         for session_id in set(self.requests.keys()) | set(self.responses.keys()):
             # spawn_subagent 新格式：<parent>_subagent_<task_id>
@@ -111,73 +103,9 @@ class ChainAnalyzer:
                 return session_id
         return None
 
-        # 旧格式 spawn_subagent：通过 subagent_start_events 时间匹配
-        if spawn_calls and self.subagent_start_events:
-            subagent_starts_sorted = sorted(self.subagent_start_events, key=lambda e: e["timestamp"])
-
-            for spawn_call in spawn_calls:
-                parent_session = spawn_call.get("session_id")
-                spawn_time = spawn_call.get("timestamp", 0)
-
-                best_match = None
-                best_diff = float("inf")
-
-                for start_event in subagent_starts_sorted:
-                    start_time = start_event.get("timestamp", 0)
-                    time_diff = abs(start_time - spawn_time)
-
-                    if time_diff < best_diff and time_diff < 5.0:
-                        best_diff = time_diff
-                        best_match = start_event
-
-                if best_match and parent_session:
-                    task_id = best_match.get("task_id")
-                    if task_id:
-                        # 旧格式：session_id = subagent_<task_id>
-                        subagent_session = f"subagent_{task_id}"
-                        if parent_session not in self._parent_to_task_ids:
-                            self._parent_to_task_ids[parent_session] = []
-                        self._parent_to_task_ids[parent_session].append((subagent_session, spawn_time))
-                        self._task_id_to_parent[subagent_session] = parent_session
-
-        # 匹配 fork_agent：通过 subAgent session_id（fork_fork_agent_xxxx）
-        if fork_calls:
-            fork_starts_sorted = sorted(fork_calls, key=lambda e: e["timestamp"])
-
-            for session_id in set(self.requests.keys()) | set(self.responses.keys()):
-                if not session_id.startswith("fork_fork_agent_"):
-                    continue
-
-                task_id = session_id  # 整个 session_id 作为 task_id
-
-                reqs = self.requests.get(session_id, [])
-                if not reqs:
-                    continue
-                first_req_time = min(r.timestamp for r in reqs)
-
-                best_match = None
-                best_diff = float("inf")
-
-                for fork_call in fork_starts_sorted:
-                    fork_time = fork_call.get("timestamp", 0)
-                    time_diff = abs(first_req_time - fork_time)
-
-                    if time_diff < best_diff and time_diff < 5.0:
-                        best_diff = time_diff
-                        best_match = fork_call
-
-                if best_match:
-                    direct_parent = best_match.get("session_id")
-                    if direct_parent:
-                        root_parent = self._find_root_parent(direct_parent)
-                        if root_parent not in self._parent_to_task_ids:
-                            self._parent_to_task_ids[root_parent] = []
-                        self._parent_to_task_ids[root_parent].append((task_id, best_match["timestamp"]))
-                        self._task_id_to_parent[task_id] = direct_parent
-
     def _find_root_parent(self, session_id: str) -> str:
         """递归向上找到真正的顶层父 session"""
-        # 新格式：<parent>_subagent_<task_id> 或 <parent>_fork_agent_<task_id>
+        # session_id 格式：<parent>_subagent_<task_id> 或 <parent>_fork_agent_<task_id>
         if "_subagent_" in session_id or "_fork_agent_" in session_id:
             # 提取 parent 部分
             if "_subagent_" in session_id:
@@ -189,37 +117,22 @@ class ChainAnalyzer:
             if "_subagent_" in parent or "_fork_agent_" in parent:
                 return self._find_root_parent(parent)
             return parent
-        # 旧格式：subagent_subagent_xxxx（嵌套的 subAgent）
-        if session_id.startswith("subagent_subagent_"):
-            task_id = session_id[len("subagent_") :]  # subagent_xxxx
-            parent = self._task_id_to_parent.get(task_id)
-            if parent:
-                return self._find_root_parent(parent)
-        elif session_id.startswith("fork_fork_agent_"):
-            parent = self._task_id_to_parent.get(session_id)
-            if parent:
-                return self._find_root_parent(parent)
         # 如果不是 subAgent，就是顶层父 session
         return session_id
 
     def _identify_parent_sessions(self) -> List[str]:
         parent_ids: List[str] = []
         for session_id in set(self.requests.keys()) | set(self.responses.keys()):
-            # 排除 spawn_subagent 和 fork_agent 的 subAgent session
-            # 旧格式：subagent_xxxx, fork_fork_agent_xxxx
-            # 新格式：<parent>_subagent_<task_id>, <parent>_fork_agent_<task_id>
-            if not session_id.startswith("subagent_") and not session_id.startswith("fork_fork_agent_") and "_subagent_" not in session_id and "_fork_agent_" not in session_id:
+            # 排除 subagent session（包含 _subagent_ 或 _fork_agent_）
+            if "_subagent_" not in session_id and "_fork_agent_" not in session_id:
                 parent_ids.append(session_id)
         return parent_ids
 
     def _identify_subagent_sessions(self) -> List[str]:
         subagent_ids: List[str] = []
         for session_id in set(self.requests.keys()) | set(self.responses.keys()):
-            # spawn_subagent 旧格式：subagent_xxxx
-            # fork_agent 旧格式：fork_fork_agent_xxxx
-            # spawn_subagent 新格式：<parent>_subagent_<task_id>
-            # fork_agent 新格式：<parent>_fork_agent_<task_id>
-            if session_id.startswith("subagent_") or session_id.startswith("fork_fork_agent_") or "_subagent_" in session_id or "_fork_agent_" in session_id:
+            # subagent session 格式：<parent>_subagent_<task_id> 或 <parent>_fork_agent_<task_id>
+            if "_subagent_" in session_id or "_fork_agent_" in session_id:
                 subagent_ids.append(session_id)
         return subagent_ids
 

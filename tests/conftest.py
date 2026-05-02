@@ -34,10 +34,10 @@ EXPECTED_CHAIN_ITERATIONS = 43
 # Subagent 数量
 EXPECTED_SUBAGENT_COUNT = 9
 
-# 预期的统计信息（兼容旧测试）
+# 预期的统计信息
 EXPECTED_TOTAL_ITERATIONS = EXPECTED_CHAIN_ITERATIONS
 
-# Subagent session IDs（新格式）
+# Subagent session IDs
 EXPECTED_SUBAGENT_SESSIONS = [
     "officeclaw_b2fbb87bbeebde489553cb50_subagent_ade2a651",
     "officeclaw_b2fbb87bbeebde489553cb50_subagent_dceb49b5",
@@ -69,20 +69,15 @@ def parser_data(traces):
 
 
 @pytest.fixture
-def analyzer_data(loader, parser_data):
+def analyzer_data(parser_data):
     """分析数据 fixture"""
     requests, responses = parser_data
-    tool_call_events = loader.load_tool_call_events()
-    subagent_start_events = loader.load_subagent_start_events()
-
-    analyzer = ChainAnalyzer(
-        requests, responses, tool_call_events, subagent_start_events
-    )
+    analyzer = ChainAnalyzer(requests, responses)
     result = analyzer.analyze()
     return result
 
 
 @pytest.fixture
 def report_data(analyzer_data):
-    """报告数据 fixture（与 analyzer_data 相同）"""
+    """报告数据 fixture"""
     return analyzer_data
