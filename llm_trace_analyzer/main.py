@@ -84,8 +84,19 @@ class LLMTraceAnalyzer:
         traces: list,
         collected: set,
     ) -> None:
-        """递归收集所有相关的 subAgent session"""
-        # 处理 spawn_subagent
+        """递归收集所有相关的 subAgent session（支持新旧格式）"""
+        # 新格式：session_id 包含父 session ID，如 <parent>_subagent_<task_id> 或 <parent>_fork_agent_<task_id>
+        for t in traces:
+            sid = t.get("session_id", "")
+            if sid.startswith(parent_session + "_subagent_") or sid.startswith(parent_session + "_fork_agent_"):
+                if sid not in collected and sid != parent_session:
+                    collected.add(sid)
+                    # 递归处理 subAgent 可能调用的其他 subAgent
+                    self._collect_subagent_sessions(
+                        sid, tool_call_events, subagent_start_events, traces, collected
+                    )
+
+        # 旧格式处理：spawn_subagent
         for event in tool_call_events:
             if (
                 event.get("session_id") == parent_session
@@ -105,7 +116,7 @@ class LLMTraceAnalyzer:
                                     sub_session, tool_call_events, subagent_start_events, traces, collected
                                 )
 
-        # 处理 fork_agent
+        # 旧格式处理：fork_agent
         for event in tool_call_events:
             if (
                 event.get("session_id") == parent_session
@@ -113,12 +124,13 @@ class LLMTraceAnalyzer:
             ):
                 fork_time = event.get("timestamp", 0)
                 for t in traces:
-                    if t["session_id"].startswith("fork_fork_agent_"):
-                        if abs(t["timestamp"] - fork_time) < 5.0 and t["session_id"] not in collected:
-                            collected.add(t["session_id"])
+                    sid = t.get("session_id", "")
+                    if sid.startswith("fork_fork_agent_"):
+                        if abs(t["timestamp"] - fork_time) < 5.0 and sid not in collected:
+                            collected.add(sid)
                             # 递归处理 forkAgent 可能调用的 spawn_subagent
                             self._collect_subagent_sessions(
-                                t["session_id"], tool_call_events, subagent_start_events, traces, collected
+                                sid, tool_call_events, subagent_start_events, traces, collected
                             )
 
     def _filter_result_for_session(
