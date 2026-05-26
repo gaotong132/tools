@@ -76,7 +76,8 @@ logging:
 ```
 
 **功能特性：**
-- 解析 `full.log` 中的 `LLM_IO_TRACE` 日志
+- 解析 `full.json`（JSON Lines）或 `full.log`（纯文本）中的 `LLM_IO_TRACE` 日志
+- 自动检测文件格式，优先查找 `full.json`
 - 合并分片请求体（body_part 1/N → N/N）
 - 关联请求（messages+tools）与响应（content+tool_calls）
 - **支持新格式 session_id**：自动识别 `_subagent_` 和 `_fork_agent_` 嵌套关系
@@ -115,7 +116,8 @@ lt -v
   - Subagents 树状展示：显示调用链和嵌套深度
 
 **默认日志路径：**
-- `~/.office-claw/.jiuwenclaw/service_default/.logs/full.log`
+- `~/.office-claw/.jiuwenclaw/service_default/.logs/full.json`（优先）
+- `~/.office-claw/.jiuwenclaw/service_default/.logs/full.log`（回退）
 
 ## 开发
 
