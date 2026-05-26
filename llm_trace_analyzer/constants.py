@@ -12,5 +12,6 @@ class TraceEventType(Enum):
 
 
 DEFAULT_LOGS_DIR = ".office-claw/.jiuwenclaw/service_default/.logs"
-DEFAULT_LOG_FILE = "full.log"
+DEFAULT_LOG_FILE = "full.json"
+DEFAULT_LOG_FILE_FALLBACK = "full.log"
 TRACE_MARKER = "[LLM_IO_TRACE]"

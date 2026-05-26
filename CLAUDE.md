@@ -11,8 +11,8 @@ uv venv && uv pip install -e .[dev]
 # Run tools
 ha                              # Analyze Agent session history (auto-finds latest)
 ha <json_file> -o report.html   # Analyze specific file
-lt                              # Analyze LLM request traces (auto-finds app.log)
-lt <log_file> -o report_dir     # Analyze specific log
+lt                              # Analyze LLM request traces (auto-finds full.json)
+lt <log_file> -o report_dir     # Analyze specific log (supports .json and .log formats)
 lt --session <id>               # Filter by session ID
 
 # Dev
@@ -35,7 +35,7 @@ agent_history_analyzer/  (CLI: ha)
 └── main.py        # CLI entry point
 
 llm_trace_analyzer/  (CLI: lt)
-├── loader.py      # LogLoader - parses LLM_IO_TRACE logs, auto-find app.log
+├── loader.py      # LogLoader - parses LLM_IO_TRACE logs (JSON Lines or text), auto-find full.json
 ├── parser.py      # TraceParser - merges fragmented request bodies
 ├── analyzer.py    # ChainAnalyzer - links requests/responses, identifies subagents
 ├── models.py      # LLMRequest, LLMResponse, LLMChain, AnalysisResult
@@ -53,7 +53,7 @@ Key patterns:
 ## Default Search Paths
 
 - **ha**: `~/.office-claw/.jiuwenclaw/agent/sessions/` (recursive search for `history.json`)
-- **lt**: `~/.office-claw/.jiuwenclaw/.logs/app.log`
+- **lt**: `~/.office-claw/.jiuwenclaw/service_default/.logs/full.json` (fallback: `full.log`)
 
 ## Data Flow
 
