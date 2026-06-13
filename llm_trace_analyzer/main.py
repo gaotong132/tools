@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from .analyzer import ChainAnalyzer
+from .constants import DEFAULT_LOG_FILE, DEFAULT_LOGS_DIR
 from .loader import LogLoader, find_latest_log
 from .models import AnalysisResult
 from .parser import TraceParser
@@ -86,8 +87,6 @@ class LLMTraceAnalyzer:
     def _filter_result_for_session(
         self, result: AnalysisResult, session_filter: str
     ) -> AnalysisResult:
-        from .models import AnalysisResult
-
         filtered = AnalysisResult()
         if session_filter in result.sessions:
             filtered.sessions[session_filter] = result.sessions[session_filter]
@@ -163,7 +162,7 @@ Examples:
     else:
         found_path = find_latest_log()
         if found_path is None:
-            default_path = Path.home() / ".office-claw" / ".jiuwenclaw" / ".logs" / "app.log"
+            default_path = Path.home() / DEFAULT_LOGS_DIR / DEFAULT_LOG_FILE
             print(f"Error: No log file found. Default path: {default_path}")
             sys.exit(1)
         log_path = found_path

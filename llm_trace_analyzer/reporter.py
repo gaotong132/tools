@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .models import AnalysisResult, IterationTiming, LLMChain, LLMRequest, LLMResponse, SubagentInfo
+from .models import AnalysisResult, IterationTiming, LLMChain, LLMRequest, LLMResponse, SubagentInfo, build_global_num_map, pair_requests_responses
 from .templates import (
     AGENT_BLOCK_TEMPLATE,
     CONTENT_TEMPLATE,
@@ -36,10 +36,13 @@ from .templates import (
 
 
 class HTMLReporter:
-    _id_counter = 0
-
     def __init__(self, log_file_path: str):
         self.log_file_path = log_file_path
+        self._id_counter = 0
+        self._global_tool_name_map: Dict[str, str] = {}
+        self._timing_map: Dict[int, Dict] = {}
+        self._global_num_map: Dict[Tuple[str, int], int] = {}
+        self._children_by_session: Dict[str, List] = {}
 
     def generate(self, result: AnalysisResult, output_path: str) -> None:
         output_dir = Path(output_path).parent
@@ -112,28 +115,8 @@ class HTMLReporter:
             }
 
         # Build global numbering
-        paired_items: Dict[Tuple[str, int], Dict] = {}
-        for req in chain.requests:
-            key = (req.session_id, req.iteration)
-            if key not in paired_items:
-                paired_items[key] = {"request": None, "response": None, "timestamp": 0}
-            paired_items[key]["request"] = req
-            paired_items[key]["timestamp"] = req.timestamp
-        for resp in chain.responses:
-            key = (resp.session_id, resp.iteration)
-            if key not in paired_items:
-                paired_items[key] = {"request": None, "response": None, "timestamp": 0}
-            paired_items[key]["response"] = resp
-            if paired_items[key]["timestamp"] == 0:
-                paired_items[key]["timestamp"] = resp.timestamp
-
-        sorted_items = sorted(paired_items.values(), key=lambda x: x["timestamp"])
-        self._global_num_map: Dict[Tuple[str, int], int] = {}
-        for i, item in enumerate(sorted_items):
-            req = item["request"]
-            resp = item["response"]
-            key = (req.session_id, req.iteration) if req else (resp.session_id, resp.iteration)
-            self._global_num_map[key] = i + 1
+        sorted_items = pair_requests_responses(chain.requests, chain.responses)
+        self._global_num_map = build_global_num_map(sorted_items)
 
         # Build parent-child map for subagents
         self._children_by_session: Dict[str, List] = {}
@@ -262,7 +245,7 @@ class HTMLReporter:
                 width_pct=bar_width,
                 segments_html="".join(segments),
                 first_global=first_global,
-                tooltip_data=self._parent_tooltip_data(window_timings, win_start, win_end),
+                tooltip_data=self._tooltip_data(window_timings, "Main", win_start, win_end),
             ))
 
         def render_subagent_row(sa, depth: int, is_last: List[bool]):
@@ -301,7 +284,7 @@ class HTMLReporter:
                 width_pct=bar_width,
                 segments_html="".join(segments),
                 first_global=sa_timings[0].iteration_num,
-                tooltip_data=self._agent_tooltip_data(sa_timings, label),
+                tooltip_data=self._tooltip_data(sa_timings, label),
             ))
 
             # 递归渲染子 agent
@@ -355,31 +338,16 @@ class HTMLReporter:
             f'</div></div></div>'
         )
 
-    def _parent_tooltip_data(self, timings, win_start, win_end):
+    def _tooltip_data(self, timings, label: str, start_ts: float = 0, end_ts: float = 0) -> Dict:
         llm = sum(t.llm_call_duration for t in timings)
         tool = sum(t.tool_processing_duration for t in timings)
         total = llm + tool
         llm_pct = (llm / total * 100) if total > 0 else 0
         tool_pct = (tool / total * 100) if total > 0 else 0
-        return {
-            "agent-name": "Main",
-            "iter-count": str(len(timings)),
-            "llm": self._format_duration(llm),
-            "tool": self._format_duration(tool),
-            "total": self._format_duration(total),
-            "llm-pct": f"{llm_pct:.1f}",
-            "tool-pct": f"{tool_pct:.1f}",
-            "time-range": f"{self._format_timestamp(win_start)} - {self._format_timestamp(win_end)}",
-        }
-
-    def _agent_tooltip_data(self, timings, label):
-        llm = sum(t.llm_call_duration for t in timings)
-        tool = sum(t.tool_processing_duration for t in timings)
-        total = llm + tool
-        llm_pct = (llm / total * 100) if total > 0 else 0
-        tool_pct = (tool / total * 100) if total > 0 else 0
-        start = timings[0].request_timestamp
-        end = max(t.response_timestamp for t in timings)
+        if not start_ts and timings:
+            start_ts = timings[0].request_timestamp
+        if not end_ts and timings:
+            end_ts = max(t.response_timestamp for t in timings)
         return {
             "agent-name": label,
             "iter-count": str(len(timings)),
@@ -388,7 +356,7 @@ class HTMLReporter:
             "total": self._format_duration(total),
             "llm-pct": f"{llm_pct:.1f}",
             "tool-pct": f"{tool_pct:.1f}",
-            "time-range": f"{self._format_timestamp(start)} - {self._format_timestamp(end)}",
+            "time-range": f"{self._format_timestamp(start_ts)} - {self._format_timestamp(end_ts)}",
         }
 
     def _generate_timing_list_html(self, chain: LLMChain) -> str:
@@ -396,22 +364,8 @@ class HTMLReporter:
         if not chain.iteration_timings:
             return ""
 
-        # 构建 response_map（使用配对逻辑）
-        paired_items: Dict[Tuple[str, int], Dict] = {}
-        for req in chain.requests:
-            key = (req.session_id, req.iteration)
-            if key not in paired_items:
-                paired_items[key] = {"timestamp": req.timestamp, "response": None}
-        for resp in chain.responses:
-            key = (resp.session_id, resp.iteration)
-            if key not in paired_items:
-                paired_items[key] = {"timestamp": resp.timestamp, "response": resp}
-            else:
-                paired_items[key]["response"] = resp
-                if paired_items[key]["timestamp"] == 0:
-                    paired_items[key]["timestamp"] = resp.timestamp
-
-        sorted_items = sorted(paired_items.values(), key=lambda x: x["timestamp"])
+        # 构建 response_map
+        sorted_items = pair_requests_responses(chain.requests, chain.responses)
         response_map: Dict[int, Optional[LLMResponse]] = {}
         for i, item in enumerate(sorted_items):
             response_map[i + 1] = item["response"]

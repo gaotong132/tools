@@ -1,7 +1,7 @@
 """数据模型定义模块"""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -87,13 +87,47 @@ class Statistics:
     avg_tool_time_seconds: float = 0.0  # 平均每次工具调用+思考耗时
 
 
-@dataclass(init=False)
+@dataclass
 class AnalysisResult:
-    sessions: Dict[str, LLMChain]
-    statistics: Statistics
-    sorted_sessions: List[LLMChain]
+    sessions: Dict[str, LLMChain] = field(default_factory=dict)
+    statistics: Statistics = field(default_factory=Statistics)
+    sorted_sessions: List[LLMChain] = field(default_factory=list)
 
-    def __init__(self):
-        self.sessions = {}
-        self.statistics = Statistics()
-        self.sorted_sessions = []
+
+def pair_requests_responses(
+    requests: List[LLMRequest],
+    responses: List[LLMResponse],
+) -> List[Dict[str, Any]]:
+    """按 (session_id, iteration) 配对请求和响应，按 timestamp 排序返回。
+
+    返回: [{"request": LLMRequest|None, "response": LLMResponse|None, "timestamp": float}, ...]
+    """
+    paired: Dict[Tuple[str, int], Dict[str, Any]] = {}
+
+    for req in requests:
+        key = (req.session_id, req.iteration)
+        if key not in paired:
+            paired[key] = {"request": None, "response": None, "timestamp": 0}
+        paired[key]["request"] = req
+        paired[key]["timestamp"] = req.timestamp
+
+    for resp in responses:
+        key = (resp.session_id, resp.iteration)
+        if key not in paired:
+            paired[key] = {"request": None, "response": None, "timestamp": 0}
+        paired[key]["response"] = resp
+        if paired[key]["timestamp"] == 0:
+            paired[key]["timestamp"] = resp.timestamp
+
+    return sorted(paired.values(), key=lambda x: x["timestamp"])
+
+
+def build_global_num_map(sorted_items: List[Dict[str, Any]]) -> Dict[Tuple[str, int], int]:
+    """为排序后的配对项分配全局编号 (1-based)。"""
+    result: Dict[Tuple[str, int], int] = {}
+    for i, item in enumerate(sorted_items):
+        req = item["request"]
+        resp = item["response"]
+        key = (req.session_id, req.iteration) if req else (resp.session_id, resp.iteration)
+        result[key] = i + 1
+    return result

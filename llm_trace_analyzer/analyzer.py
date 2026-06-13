@@ -10,6 +10,7 @@ from .models import (
     LLMResponse,
     Statistics,
     SubagentInfo,
+    pair_requests_responses,
 )
 
 
@@ -21,6 +22,7 @@ class ChainAnalyzer:
     ):
         self.requests = requests
         self.responses = responses
+        self._all_sessions = set(requests.keys()) | set(responses.keys())
         self._parent_to_task_ids: Dict[str, List[Tuple[str, float]]] = {}
         self._task_id_to_parent: Dict[str, str] = {}
 
@@ -58,8 +60,11 @@ class ChainAnalyzer:
         return result
 
     def _match_spawn_calls_to_task_ids(self) -> None:
-        # 新格式：从 session_id 直接提取父子关系
-        for session_id in set(self.requests.keys()) | set(self.responses.keys()):
+        for session_id in self._all_sessions:
+            # 获取该 session 的起始时间
+            child_reqs = self.requests.get(session_id, [])
+            child_start = child_reqs[0].timestamp if child_reqs else 0
+
             # spawn_subagent 新格式：<parent>_subagent_<task_id>
             if "_subagent_" in session_id:
                 parts = session_id.split("_subagent_")
@@ -67,7 +72,7 @@ class ChainAnalyzer:
                     parent_session = parts[0]
                     if parent_session not in self._parent_to_task_ids:
                         self._parent_to_task_ids[parent_session] = []
-                    self._parent_to_task_ids[parent_session].append((session_id, 0))
+                    self._parent_to_task_ids[parent_session].append((session_id, child_start))
                     self._task_id_to_parent[session_id] = parent_session
 
             # fork_agent 新格式：<parent>_fork_agent_<task_id>
@@ -75,17 +80,13 @@ class ChainAnalyzer:
                 parts = session_id.split("_fork_agent_")
                 if len(parts) >= 2:
                     parent_session = parts[0]
-                    # parent 可能是部分 session_id，需要找到完整匹配
-                    # 例如：parent = subagent_af7666eb，完整的是 sess_xxx_subagent_af7666eb
                     full_parent = self._find_full_session_id(parent_session)
                     if full_parent:
                         root_parent = self._find_root_parent(full_parent)
                         if root_parent not in self._parent_to_task_ids:
                             self._parent_to_task_ids[root_parent] = []
-                        self._parent_to_task_ids[root_parent].append((session_id, 0))
-                        self._task_id_to_parent[session_id] = (
-                            full_parent  # 记录直接 parent（完整 session_id）
-                        )
+                        self._parent_to_task_ids[root_parent].append((session_id, child_start))
+                        self._task_id_to_parent[session_id] = full_parent
                     else:
                         # parent 不在已知 session 中，直接添加
                         if parent_session not in self._parent_to_task_ids:
@@ -105,38 +106,38 @@ class ChainAnalyzer:
                 return session_id
         return None
 
-    def _find_root_parent(self, session_id: str) -> str:
+    def _find_root_parent(self, session_id: str, _visited: Optional[set] = None) -> str:
         """递归向上找到真正的顶层父 session"""
-        # session_id 格式：<parent>_subagent_<task_id> 或 <parent>_fork_agent_<task_id>
+        if _visited is None:
+            _visited = set()
+        if session_id in _visited:
+            return session_id  # 防止循环
+        _visited.add(session_id)
+
         if "_subagent_" in session_id or "_fork_agent_" in session_id:
-            # 提取 parent 部分
             if "_subagent_" in session_id:
                 parts = session_id.split("_subagent_")
             else:
                 parts = session_id.split("_fork_agent_")
             parent = parts[0] if len(parts) >= 2 else session_id
-            # 检查 parent 是否也是 subAgent
             if "_subagent_" in parent or "_fork_agent_" in parent:
-                return self._find_root_parent(parent)
+                return self._find_root_parent(parent, _visited)
             return parent
-        # 如果不是 subAgent，就是顶层父 session
         return session_id
 
     def _identify_parent_sessions(self) -> List[str]:
-        parent_ids: List[str] = []
-        for session_id in set(self.requests.keys()) | set(self.responses.keys()):
-            # 排除 subagent session（包含 _subagent_ 或 _fork_agent_）
-            if "_subagent_" not in session_id and "_fork_agent_" not in session_id:
-                parent_ids.append(session_id)
-        return parent_ids
+        return [s for s in self._all_sessions if "_subagent_" not in s and "_fork_agent_" not in s]
 
     def _identify_subagent_sessions(self) -> List[str]:
-        subagent_ids: List[str] = []
-        for session_id in set(self.requests.keys()) | set(self.responses.keys()):
-            # subagent session 格式：<parent>_subagent_<task_id> 或 <parent>_fork_agent_<task_id>
-            if "_subagent_" in session_id or "_fork_agent_" in session_id:
-                subagent_ids.append(session_id)
-        return subagent_ids
+        return [s for s in self._all_sessions if "_subagent_" in s or "_fork_agent_" in s]
+
+    def _resolve_subagent_session(self, task_id: str) -> str:
+        """从 task_id 推导 subagent 的 session_id"""
+        if "_subagent_" in task_id or "_fork_agent_" in task_id:
+            return task_id
+        if task_id.startswith("fork_fork_agent_"):
+            return task_id
+        return f"subagent_{task_id}"
 
     def _build_parent_chain(
         self, session_id: str, subagent_sessions: List[str]
@@ -161,16 +162,7 @@ class ChainAnalyzer:
 
         subagent_infos: List[SubagentInfo] = []
         for task_id, spawn_time in related_subagents:
-            # 确定 subAgent session_id
-            # 新格式：task_id 就是完整的 session_id（包含 _subagent_ 或 _fork_agent_）
-            # 旧格式 fork_agent: task_id = fork_fork_agent_xxxx
-            # 旧格式 spawn_subagent: task_id = xxxx, session_id = subagent_{task_id}
-            if "_subagent_" in task_id or "_fork_agent_" in task_id:
-                subagent_session = task_id
-            elif task_id.startswith("fork_fork_agent_"):
-                subagent_session = task_id
-            else:
-                subagent_session = f"subagent_{task_id}"
+            subagent_session = self._resolve_subagent_session(task_id)
 
             if subagent_session in subagent_sessions:
                 subagent_reqs = self.requests.get(subagent_session, [])
@@ -197,14 +189,7 @@ class ChainAnalyzer:
         all_responses: List[LLMResponse] = list(resps)
 
         for task_id, _ in related_subagents:
-            # 确定 subAgent session_id
-            # 新格式：task_id 就是完整的 session_id（包含 _subagent_ 或 _fork_agent_）
-            if "_subagent_" in task_id or "_fork_agent_" in task_id:
-                subagent_session = task_id
-            elif task_id.startswith("fork_fork_agent_"):
-                subagent_session = task_id
-            else:
-                subagent_session = f"subagent_{task_id}"
+            subagent_session = self._resolve_subagent_session(task_id)
 
             # 计算嵌套深度和路径用于显示
             depth, chain_path, direct_parent = self._compute_subagent_depth(task_id)
@@ -255,25 +240,7 @@ class ChainAnalyzer:
         timings: List[IterationTiming] = []
 
         # 按 (session_id, iteration) 配对
-        paired: Dict[Tuple[str, int], Dict] = {}
-
-        for req in requests:
-            key = (req.session_id, req.iteration)
-            if key not in paired:
-                paired[key] = {"request": None, "response": None, "timestamp": 0}
-            paired[key]["request"] = req
-            paired[key]["timestamp"] = req.timestamp
-
-        for resp in responses:
-            key = (resp.session_id, resp.iteration)
-            if key not in paired:
-                paired[key] = {"request": None, "response": None, "timestamp": 0}
-            paired[key]["response"] = resp
-            if paired[key]["timestamp"] == 0:
-                paired[key]["timestamp"] = resp.timestamp
-
-        # 按 timestamp 排序
-        sorted_items = sorted(paired.values(), key=lambda x: x["timestamp"])
+        sorted_items = pair_requests_responses(requests, responses)
 
         # 构建 session_id -> prev_iteration 的映射，用于判断子 Agent 第一次请求
         session_first_iteration: Dict[str, int] = {}
@@ -329,12 +296,13 @@ class ChainAnalyzer:
         return timings
 
     def _has_spawn_subagent(self, resp: LLMResponse) -> bool:
-        """检查 response 是否包含 spawn_subagent 类工具调用"""
+        """检查 response 是否包含 spawn_subagent/fork_agent 工具调用"""
         if not resp.tool_calls:
             return False
+        spawn_names = {"spawn_subagent", "fork_agent", "spawn_fork_agent"}
         for tc in resp.tool_calls:
             name = tc.get("name", "") or tc.get("function", {}).get("name", "")
-            if "subagent" in name.lower() or "spawn" in name.lower() or "agent" in name.lower():
+            if name in spawn_names:
                 return True
         return False
 

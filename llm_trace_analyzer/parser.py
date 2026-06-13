@@ -208,21 +208,28 @@ class TraceParser:
         reasoning_traces: List[Dict[str, Any]],
     ) -> Optional[LLMResponse]:
         merged_body = self._merge_body_parts(output_traces)
-        if not merged_body:
+        body_dict = {}
+        if merged_body:
+            try:
+                body_dict = json.loads(merged_body)
+            except json.JSONDecodeError:
+                pass
+
+        # 如果 output 和 reasoning 都为空，跳过
+        reasoning_merged = self._merge_reasoning(reasoning_traces)
+        if not body_dict and not reasoning_merged:
             return None
 
-        try:
-            body_dict = json.loads(merged_body)
-        except json.JSONDecodeError:
-            return None
-
-        timestamp = output_traces[0]["timestamp"] if output_traces else 0
-        model_name = output_traces[0]["model_name"] if output_traces else ""
+        timestamp = output_traces[0]["timestamp"] if output_traces else (
+            reasoning_traces[0]["timestamp"] if reasoning_traces else 0
+        )
+        model_name = output_traces[0]["model_name"] if output_traces else (
+            reasoning_traces[0]["model_name"] if reasoning_traces else ""
+        )
 
         content = body_dict.get("content", "")
         reasoning_content = body_dict.get("reasoning_content", "") or ""
 
-        reasoning_merged = self._merge_reasoning(reasoning_traces)
         if reasoning_merged:
             reasoning_content = reasoning_merged
 
