@@ -384,6 +384,16 @@ SESSION_DETAIL_TEMPLATE = """
 .gantt-bar.depth-0 {{ background: #f3e5f5; }}
 .gantt-bar.depth-1 {{ background: #ede7f6; }}
 .gantt-bar.depth-2 {{ background: #e8def8; }}
+/* Gantt Tooltip */
+.gantt-tooltip {{ position: fixed; pointer-events: none; background: #1a1a2e; color: white; padding: 12px 16px; border-radius: 8px; font-size: 13px; line-height: 1.8; z-index: 2000; box-shadow: 0 4px 16px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.15s; max-width: 300px; }}
+.gantt-tooltip.visible {{ opacity: 1; }}
+.gantt-tooltip .tt-name {{ font-weight: bold; font-size: 14px; margin-bottom: 4px; color: #82b1ff; }}
+.gantt-tooltip .tt-row {{ display: flex; justify-content: space-between; gap: 20px; }}
+.gantt-tooltip .tt-label {{ color: #aaa; }}
+.gantt-tooltip .tt-value {{ font-weight: bold; }}
+.gantt-tooltip .tt-bar {{ height: 6px; border-radius: 3px; background: #333; margin: 6px 0 2px; overflow: hidden; display: flex; }}
+.gantt-tooltip .tt-bar-llm {{ background: #4a90d9; }}
+.gantt-tooltip .tt-bar-tool {{ background: #f57c00; }}
 /* Tab Navigation */
 .tab-nav {{ display: flex; flex-wrap: wrap; gap: 0; margin-bottom: 0; border-bottom: 2px solid #e0e0e0; padding: 0 5px; }}
 .tab-btn {{ padding: 10px 16px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: #f0f0f0; cursor: pointer; font-size: 13px; margin-bottom: -2px; color: #666; transition: all 0.2s; }}
@@ -563,8 +573,43 @@ SESSION_DETAIL_TEMPLATE = """
                 window.scrollTo({{ top: 0, behavior: 'smooth' }});
             }});
         }})();
+        function showGanttTooltip(event, bar) {{
+            const tt = document.getElementById('ganttTooltip');
+            const name = bar.dataset.agentName;
+            const iters = bar.dataset.iterCount;
+            const llm = bar.dataset.llm;
+            const tool = bar.dataset.tool;
+            const total = bar.dataset.total;
+            const llmPct = bar.dataset.llmPct;
+            const toolPct = bar.dataset.toolPct;
+            const timeRange = bar.dataset.timeRange;
+            tt.innerHTML = `
+                <div class="tt-name">${{name}}</div>
+                <div class="tt-row"><span class="tt-label">Iterations</span><span class="tt-value">${{iters}}</span></div>
+                <div class="tt-bar"><div class="tt-bar-llm" style="width:${{llmPct}}%"></div><div class="tt-bar-tool" style="width:${{toolPct}}%"></div></div>
+                <div class="tt-row"><span class="tt-label">LLM</span><span class="tt-value">${{llm}}</span></div>
+                <div class="tt-row"><span class="tt-label">Tool</span><span class="tt-value">${{tool}}</span></div>
+                <div class="tt-row"><span class="tt-label">Total</span><span class="tt-value">${{total}}</span></div>
+                <div class="tt-row"><span class="tt-label">Time</span><span class="tt-value">${{timeRange}}</span></div>
+            `;
+            tt.classList.add('visible');
+            moveGanttTooltip(event);
+        }}
+        function moveGanttTooltip(event) {{
+            const tt = document.getElementById('ganttTooltip');
+            let x = event.clientX + 15;
+            let y = event.clientY + 15;
+            if (x + tt.offsetWidth > window.innerWidth - 10) x = event.clientX - tt.offsetWidth - 15;
+            if (y + tt.offsetHeight > window.innerHeight - 10) y = event.clientY - tt.offsetHeight - 15;
+            tt.style.left = x + 'px';
+            tt.style.top = y + 'px';
+        }}
+        function hideGanttTooltip() {{
+            document.getElementById('ganttTooltip').classList.remove('visible');
+        }}
     </script>
     <button id="goTopBtn" class="go-top-btn" title="Go to Top">&#8593;</button>
+    <div id="ganttTooltip" class="gantt-tooltip"></div>
 </body>
 </html>
 """

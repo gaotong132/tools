@@ -233,26 +233,23 @@ class HTMLReporter:
                 llm_w = max((t.llm_call_duration / agent_span) * 100, 0.3)
                 tool_w = max((t.tool_processing_duration / agent_span) * 100, 0)
                 segments.append(
-                    f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.2f}%" '
-                    f'title="iter {t.iteration_num}: LLM {self._format_duration(t.llm_call_duration)}"></div>'
+                    f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.2f}%"></div>'
                 )
                 if tool_w > 0.1:
                     segments.append(
-                        f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.2f}%" '
-                        f'title="iter {t.iteration_num}: Tool {self._format_duration(t.tool_processing_duration)}"></div>'
+                        f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.2f}%"></div>'
                     )
 
-            tooltip = (
-                f"{label} | {len(timings)} iters | "
-                f"LLM: {self._format_duration(llm_total)} | "
-                f"Tool: {self._format_duration(tool_total)} | "
-                f"Total: {self._format_duration(total)}"
-            )
             depth_class = "parent" if depth == 0 else str(min(depth - 1, 2))
+            time_range = f"{self._format_timestamp(agent_start)} - {self._format_timestamp(agent_end)}"
+
+            # LLM/Tool 占比条
+            llm_pct = (llm_total / total * 100) if total > 0 else 0
+            tool_pct = (tool_total / total * 100) if total > 0 else 0
 
             bars.append(
                 f'<div class="gantt-row">'
-                f'<div class="gantt-label" style="padding-left:{depth * 12}px" title="{html.escape(tooltip)}">'
+                f'<div class="gantt-label" style="padding-left:{depth * 12}px">'
                 f'<span class="gantt-tree">{html.escape(tree_prefix)}</span>'
                 f'{html.escape(label)}'
                 f'</div>'
@@ -260,8 +257,18 @@ class HTMLReporter:
                 f'<div class="gantt-bar depth-{depth_class}" '
                 f'style="left:{left_pct:.1f}%;width:{width_pct:.1f}%" '
                 f'data-first-global="{first_global}" '
+                f'data-agent-name="{html.escape(label)}" '
+                f'data-iter-count="{len(timings)}" '
+                f'data-llm="{self._format_duration(llm_total)}" '
+                f'data-tool="{self._format_duration(tool_total)}" '
+                f'data-total="{self._format_duration(total)}" '
+                f'data-llm-pct="{llm_pct:.1f}" '
+                f'data-tool-pct="{tool_pct:.1f}" '
+                f'data-time-range="{html.escape(time_range)}" '
                 f'onclick="jumpToIteration({first_global})" '
-                f'title="{html.escape(tooltip)}">'
+                f'onmouseenter="showGanttTooltip(event, this)" '
+                f'onmousemove="moveGanttTooltip(event)" '
+                f'onmouseleave="hideGanttTooltip()">'
                 f'{"".join(segments)}'
                 f'</div>'
                 f'</div>'
