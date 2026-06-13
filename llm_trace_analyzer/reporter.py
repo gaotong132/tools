@@ -173,54 +173,113 @@ class HTMLReporter:
             f.write(html_content)
 
     def _generate_gantt_html(self, chain: LLMChain) -> str:
-        """生成 Gantt 时间线面板"""
-        # 收集所有 agent (parent + subagents) 的时间范围
-        agents = []
-        parent_timings = [t for t in chain.iteration_timings if t.session_id == chain.session_id]
-        if parent_timings:
-            agents.append({
-                "label": "Parent",
-                "start": parent_timings[0].request_timestamp,
-                "end": parent_timings[-1].response_timestamp,
-                "depth_class": "parent",
-                "iter_count": len(parent_timings),
-            })
-
-        for sa in sorted(chain.subagents, key=lambda s: (s.depth, s.start_time)):
-            label = sa.chain_path[-1] if sa.chain_path else self._short_session_id(sa.session_id)
-            depth_class = str(min(sa.depth, 2))
-            sa_timings = [t for t in chain.iteration_timings if t.session_id == sa.session_id]
-            iter_count = len(sa_timings)
-            agents.append({
-                "label": label,
-                "start": sa.start_time,
-                "end": sa.end_time,
-                "depth_class": depth_class,
-                "iter_count": iter_count,
-            })
+        """生成完整调用链 Gantt 时间线面板"""
+        if not chain.iteration_timings:
+            return ""
 
         session_start = chain.start_time
         total_span = max(chain.end_time - chain.start_time, 0.001)
 
+        # 按 session_id 分组 timings
+        timings_by_session: Dict[str, List] = {}
+        for t in chain.iteration_timings:
+            if t.session_id not in timings_by_session:
+                timings_by_session[t.session_id] = []
+            timings_by_session[t.session_id].append(t)
+
+        # 构建 agent 树
+        sa_map = {sa.session_id: sa for sa in chain.subagents}
+        children_map: Dict[str, List] = {}
+        for sa in chain.subagents:
+            parent = sa.parent_session_id
+            if parent not in children_map:
+                children_map[parent] = []
+            children_map[parent].append(sa)
+        for parent in children_map:
+            children_map[parent].sort(key=lambda s: s.start_time)
+
+        # DFS 渲染树
         bars: List[str] = []
-        for agent in agents:
-            left_pct = ((agent["start"] - session_start) / total_span) * 100
-            width_pct = max(((agent["end"] - agent["start"]) / total_span) * 100, 0.5)
-            duration = self._format_duration(agent["end"] - agent["start"])
-            bars.append(GANTT_BAR_TEMPLATE.format(
-                label=agent["label"],
-                full_label=agent["label"],
-                agent_key=agent["label"],
-                left_pct=f"{left_pct:.1f}",
-                width_pct=f"{width_pct:.1f}",
-                depth_class=agent["depth_class"],
-                bar_text=f'{agent["iter_count"]} iters',
-                duration=duration,
-                iteration_count=agent["iter_count"],
-            ))
+
+        def render_agent(session_id: str, depth: int, is_last: List[bool], label: str):
+            timings = timings_by_session.get(session_id, [])
+            if not timings:
+                return
+
+            # 构建树缩进前缀
+            prefix_parts = []
+            for i, last in enumerate(is_last[:-1]):
+                prefix_parts.append("    " if last else "│   ")
+            if is_last:
+                prefix_parts.append("└─ " if is_last[-1] else "├─ ")
+            tree_prefix = "".join(prefix_parts)
+
+            # 计算统计数据
+            llm_total = sum(t.llm_call_duration for t in timings)
+            tool_total = sum(t.tool_processing_duration for t in timings)
+            total = llm_total + tool_total
+            first_global = timings[0].iteration_num
+            agent_start = timings[0].request_timestamp
+            agent_end = max(t.response_timestamp for t in timings)
+
+            # 位置
+            left_pct = ((agent_start - session_start) / total_span) * 100
+            width_pct = max(((agent_end - agent_start) / total_span) * 100, 0.5)
+
+            # 生成迭代分段
+            agent_span = max(agent_end - agent_start, 0.001)
+            segments: List[str] = []
+            for t in timings:
+                llm_w = max((t.llm_call_duration / agent_span) * 100, 0.3)
+                tool_w = max((t.tool_processing_duration / agent_span) * 100, 0)
+                segments.append(
+                    f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.2f}%" '
+                    f'title="iter {t.iteration_num}: LLM {self._format_duration(t.llm_call_duration)}"></div>'
+                )
+                if tool_w > 0.1:
+                    segments.append(
+                        f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.2f}%" '
+                        f'title="iter {t.iteration_num}: Tool {self._format_duration(t.tool_processing_duration)}"></div>'
+                    )
+
+            tooltip = (
+                f"{label} | {len(timings)} iters | "
+                f"LLM: {self._format_duration(llm_total)} | "
+                f"Tool: {self._format_duration(tool_total)} | "
+                f"Total: {self._format_duration(total)}"
+            )
+            depth_class = "parent" if depth == 0 else str(min(depth - 1, 2))
+
+            bars.append(
+                f'<div class="gantt-row">'
+                f'<div class="gantt-label" style="padding-left:{depth * 12}px" title="{html.escape(tooltip)}">'
+                f'<span class="gantt-tree">{html.escape(tree_prefix)}</span>'
+                f'{html.escape(label)}'
+                f'</div>'
+                f'<div class="gantt-track">'
+                f'<div class="gantt-bar depth-{depth_class}" '
+                f'style="left:{left_pct:.1f}%;width:{width_pct:.1f}%" '
+                f'data-first-global="{first_global}" '
+                f'onclick="jumpToIteration({first_global})" '
+                f'title="{html.escape(tooltip)}">'
+                f'{"".join(segments)}'
+                f'</div>'
+                f'</div>'
+                f'</div>'
+            )
+
+            # 递归渲染子 Agent
+            children = children_map.get(session_id, [])
+            for i, child_sa in enumerate(children):
+                child_label = child_sa.chain_path[-1] if child_sa.chain_path else self._short_session_id(child_sa.session_id)
+                child_is_last = is_last + [i == len(children) - 1]
+                render_agent(child_sa.session_id, depth + 1, child_is_last, child_label)
+
+        # 从 Parent 开始渲染
+        render_agent(chain.session_id, 0, [], "Parent")
 
         return GANTT_PANEL_TEMPLATE.format(
-            agent_count=len(agents),
+            agent_count=len(bars),
             total_duration=self._format_duration(chain.end_time - chain.start_time),
             gantt_bars_html="\n".join(bars),
         )

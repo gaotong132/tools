@@ -370,17 +370,20 @@ SESSION_DETAIL_TEMPLATE = """
 .tool-name-item {{ background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 3px; font-size: 12px; font-family: monospace; }}
 /* Gantt Timeline */
 .gantt-panel {{ background: white; border-radius: 8px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
-.gantt-chart {{ max-height: 300px; overflow-y: auto; padding-top: 5px; }}
-.gantt-row {{ display: flex; align-items: center; height: 32px; margin-bottom: 4px; }}
-.gantt-label {{ width: 140px; flex-shrink: 0; font-size: 12px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; text-align: right; }}
-.gantt-track {{ flex: 1; position: relative; height: 24px; background: #f8f9fa; border-radius: 4px; }}
-.gantt-bar {{ position: absolute; top: 1px; height: 22px; border-radius: 4px; cursor: pointer; transition: opacity 0.2s, box-shadow 0.2s; display: flex; align-items: center; padding: 0 6px; min-width: 4px; }}
-.gantt-bar:hover {{ opacity: 0.85; box-shadow: 0 0 0 2px #4a90d9; }}
-.gantt-bar.depth-parent {{ background: #4a90d9; }}
-.gantt-bar.depth-0 {{ background: #7b1fa2; }}
-.gantt-bar.depth-1 {{ background: #9c27b0; }}
-.gantt-bar.depth-2 {{ background: #ba68c8; }}
-.gantt-bar-text {{ font-size: 11px; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.gantt-chart {{ max-height: 400px; overflow-y: auto; padding-top: 5px; }}
+.gantt-row {{ display: flex; align-items: center; height: 28px; margin-bottom: 2px; }}
+.gantt-label {{ width: 180px; flex-shrink: 0; font-size: 12px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; font-family: 'Consolas', 'Monaco', monospace; }}
+.gantt-tree {{ color: #aaa; }}
+.gantt-track {{ flex: 1; position: relative; height: 20px; background: #f8f9fa; border-radius: 3px; }}
+.gantt-bar {{ position: absolute; top: 1px; height: 18px; border-radius: 3px; cursor: pointer; transition: box-shadow 0.2s; display: flex; overflow: hidden; min-width: 4px; }}
+.gantt-bar:hover {{ box-shadow: 0 0 0 2px #4a90d9; z-index: 1; }}
+.gantt-seg {{ height: 100%; min-width: 1px; }}
+.gantt-seg-llm {{ background: #4a90d9; }}
+.gantt-seg-tool {{ background: #f57c00; }}
+.gantt-bar.depth-parent {{ background: #e3f2fd; }}
+.gantt-bar.depth-0 {{ background: #f3e5f5; }}
+.gantt-bar.depth-1 {{ background: #ede7f6; }}
+.gantt-bar.depth-2 {{ background: #e8def8; }}
 /* Tab Navigation */
 .tab-nav {{ display: flex; flex-wrap: wrap; gap: 0; margin-bottom: 0; border-bottom: 2px solid #e0e0e0; padding: 0 5px; }}
 .tab-btn {{ padding: 10px 16px; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: #f0f0f0; cursor: pointer; font-size: 13px; margin-bottom: -2px; color: #666; transition: all 0.2s; }}
