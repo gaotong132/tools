@@ -149,11 +149,11 @@ class ChainAnalyzer:
 
         for req in reqs:
             req.source = "parent"
-            req.source_label = "Parent"
+            req.source_label = "Main"
 
         for resp in resps:
             resp.source = "parent"
-            resp.source_label = "Parent"
+            resp.source_label = "Main"
 
         model_name = reqs[0].model_name if reqs else (resps[0].model_name if resps else "")
 
@@ -346,7 +346,7 @@ class ChainAnalyzer:
             parent_session = self._task_id_to_parent.get(current_task_id)
 
             if not parent_session:
-                chain_path.insert(0, "Parent")
+                chain_path.insert(0, "Main")
                 break
 
             # 检查 parent 是否也是 subAgent（新格式）
@@ -374,7 +374,7 @@ class ChainAnalyzer:
                 current_task_id = parent_session
             else:
                 # 父是顶层 session
-                chain_path.insert(0, "Parent")
+                chain_path.insert(0, "Main")
                 break
 
         return depth, chain_path, direct_parent

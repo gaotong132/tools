@@ -370,6 +370,9 @@ SESSION_DETAIL_TEMPLATE = """
 .tool-name-item {{ background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 3px; font-size: 12px; font-family: monospace; }}
 /* Gantt Timeline */
 .gantt-panel {{ background: white; border-radius: 8px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+.gantt-legend {{ display: flex; gap: 16px; padding: 4px 0 8px; font-size: 12px; color: #666; }}
+.gantt-legend-item {{ display: flex; align-items: center; gap: 4px; }}
+.gantt-legend-color {{ display: inline-block; width: 14px; height: 10px; border-radius: 2px; }}
 .gantt-chart {{ max-height: 400px; overflow-y: auto; padding-top: 5px; }}
 .gantt-row {{ display: flex; align-items: center; height: 28px; margin-bottom: 2px; }}
 .gantt-label {{ width: 180px; flex-shrink: 0; font-size: 12px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; font-family: 'Consolas', 'Monaco', monospace; }}
@@ -701,9 +704,14 @@ TOOLS_SECTION_TEMPLATE = """
 GANTT_PANEL_TEMPLATE = """
 <div class="gantt-panel">
     <div class="collapsible" onclick="toggleCollapsible(this)">
-        <span class="toggle-icon rotated">&#9654;</span> Agent Timeline ({agent_count} agents, {total_duration})
+        <span class="toggle-icon rotated">&#9654;</span> Agent Timeline ({agent_count} rows, {total_duration})
     </div>
     <div class="collapsible-content expanded">
+        <div class="gantt-legend">
+            <span class="gantt-legend-item"><span class="gantt-legend-color" style="background:#4a90d9"></span>LLM Call</span>
+            <span class="gantt-legend-item"><span class="gantt-legend-color" style="background:#f57c00"></span>Tool Execution</span>
+            <span class="gantt-legend-item"><span class="gantt-legend-color" style="background:#bdbdbd"></span>Waiting</span>
+        </div>
         <div class="gantt-chart">
             {gantt_bars_html}
         </div>

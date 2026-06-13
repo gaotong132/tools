@@ -230,7 +230,7 @@ class HTMLReporter:
                 bar_left = ((win_start - session_start) / total_span) * 100
                 bar_width = max(((win_end - win_start) / total_span) * 100, 0.5)
                 rows.append(self._gantt_row_html(
-                    label=f"Parent {label_suffix}",
+                    label=f"Main {label_suffix}",
                     tree_prefix="",
                     depth=0,
                     left_pct=bar_left,
@@ -250,34 +250,51 @@ class HTMLReporter:
             bar_width = max(((bar_right_ts - bar_left_ts) / total_span) * 100, 0.5)
             agent_span = max(bar_right_ts - bar_left_ts, 0.001)
 
-            # 构建段：LLM + wait（填充到窗口边界）
-            events: List[Tuple[float, float, str]] = []
+            # 构建段：LLM（蓝）+ Tool（橙）+ Wait（灰）
+            # 收集所有活动区间
+            intervals: List[Tuple[float, float, str]] = []
             for t in window_timings:
-                events.append((t.request_timestamp, t.response_timestamp, "llm"))
+                intervals.append((t.request_timestamp, t.response_timestamp, "llm"))
+                if t.tool_processing_duration > 0:
+                    tool_end = min(t.response_timestamp + t.tool_processing_duration, win_end)
+                    if tool_end > t.response_timestamp + 0.5:
+                        intervals.append((t.response_timestamp, tool_end, "tool"))
 
-            sorted_llm = sorted(events, key=lambda e: e[0])
-            # 在 LLM 之间加 wait 段
-            for i in range(len(sorted_llm) - 1):
-                gap_start = sorted_llm[i][1]
-                gap_end = sorted_llm[i + 1][0]
-                if gap_end > gap_start + 0.5:
-                    events.append((gap_start, gap_end, "wait"))
+            # 按开始时间排序
+            intervals.sort(key=lambda x: x[0])
 
-            # 在窗口首尾加 wait 段
-            if sorted_llm[0][0] > win_start + 0.5:
-                events.append((win_start, sorted_llm[0][0], "wait"))
-            last_end = max(e[1] for e in sorted_llm)
-            if win_end > last_end + 0.5:
-                events.append((last_end, win_end, "wait"))
+            # 收集所有时间边界点
+            points = set()
+            points.add(max(win_start, intervals[0][0]) if intervals else win_start)
+            points.add(min(win_end, max(i[1] for i in intervals)) if intervals else win_end)
+            for start, end, _ in intervals:
+                if start >= win_start:
+                    points.add(start)
+                if end <= win_end:
+                    points.add(end)
 
-            all_events = sorted(events, key=lambda e: e[0])
+            sorted_points = sorted(points)
             segments: List[str] = []
-            for start, end, etype in all_events:
-                w = max(((end - start) / agent_span) * 100, 0.3)
-                segments.append(f'<div class="gantt-seg gantt-seg-{etype}" style="width:{w:.2f}%"></div>')
+            for i in range(len(sorted_points) - 1):
+                seg_start = sorted_points[i]
+                seg_end = sorted_points[i + 1]
+                if seg_end - seg_start < 0.1:
+                    continue
+                mid = (seg_start + seg_end) / 2
+                # 判断这个区间属于什么活动（优先级：llm > tool > wait）
+                seg_type = "wait"
+                for s, e, t in intervals:
+                    if s <= mid < e:
+                        if t == "llm":
+                            seg_type = "llm"
+                            break
+                        elif t == "tool" and seg_type != "llm":
+                            seg_type = "tool"
+                w = max(((seg_end - seg_start) / agent_span) * 100, 0.3)
+                segments.append(f'<div class="gantt-seg gantt-seg-{seg_type}" style="width:{w:.2f}%"></div>')
 
             rows.append(self._gantt_row_html(
-                label=f"Parent {label_suffix}",
+                label=f"Main {label_suffix}",
                 tree_prefix="",
                 depth=0,
                 left_pct=bar_left,
@@ -384,7 +401,7 @@ class HTMLReporter:
         llm_pct = (llm / total * 100) if total > 0 else 0
         tool_pct = (tool / total * 100) if total > 0 else 0
         return {
-            "agent-name": "Parent",
+            "agent-name": "Main",
             "iter-count": str(len(timings)),
             "llm": self._format_duration(llm),
             "tool": self._format_duration(tool),
