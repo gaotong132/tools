@@ -235,7 +235,7 @@ SESSION_DETAIL_TEMPLATE = """
 .gantt-chart {{ max-height: 500px; overflow-y: auto; padding-top: 5px; }}
 .gantt-agent-header {{ font-size: 12px; font-weight: bold; color: #4a90d9; padding: 8px 0 2px 4px; border-bottom: 1px solid #e8e8e8; margin-top: 4px; }}
 .gantt-row {{ display: flex; align-items: center; height: 28px; margin-bottom: 2px; }}
-.gantt-label {{ width: 180px; flex-shrink: 0; font-size: 12px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; font-family: 'Consolas', 'Monaco', monospace; }}
+.gantt-label {{ width: 320px; flex-shrink: 0; font-size: 12px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; font-family: 'Consolas', 'Monaco', monospace; }}
 .gantt-tree {{ color: #aaa; }}
 .gantt-track {{ flex: 1; position: relative; height: 20px; background: #f8f9fa; border-radius: 3px; }}
 .gantt-bar {{ position: absolute; top: 1px; height: 18px; border-radius: 3px; cursor: pointer; transition: box-shadow 0.2s; display: flex; overflow: hidden; min-width: 4px; }}
@@ -254,7 +254,7 @@ SESSION_DETAIL_TEMPLATE = """
 .gantt-expand-btn:hover {{ color: #4a90d9; }}
 .gantt-expand-content {{ padding: 2px 0 6px 0; border-left: 2px solid #e0e0e0; margin-left: 8px; }}
 .gantt-expand-content .gantt-row {{ height: 22px; }}
-.gantt-expand-content .gantt-label {{ font-size: 11px; width: 170px; padding-left: 12px; }}
+.gantt-expand-content .gantt-label {{ font-size: 11px; width: 310px; padding-left: 12px; }}
 .gantt-expand-content .gantt-track {{ height: 16px; }}
 .gantt-expand-content .gantt-bar {{ height: 14px; top: 1px; }}
 /* Gantt Tooltip */

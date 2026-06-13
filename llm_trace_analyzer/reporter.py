@@ -284,6 +284,12 @@ class HTMLReporter:
                 ))
 
             # === 展开内容：逐 iteration 细节行 ===
+            # 构建该 agent 的 response 查找表（按 response_timestamp 匹配）
+            resp_lookup: Dict[float, LLMResponse] = {}
+            for r in chain.responses:
+                if r.session_id == sid:
+                    resp_lookup[round(r.timestamp, 3)] = r
+
             detail_rows: List[str] = []
             detail_entries = [e for e in sort_entries if e[4] in agent_timings]
             for entry in detail_entries:
@@ -305,6 +311,28 @@ class HTMLReporter:
                     tool_w = max((timing.tool_processing_duration / iter_span) * 100, 0.8)
                     segs.append(f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.1f}%"></div>')
 
+                # 构建标签：#N + tool calls + content 摘要
+                label_text = f"#{local_num}"
+                resp = resp_lookup.get(round(timing.response_timestamp, 3))
+                if resp:
+                    # Tool call 名称
+                    if resp.tool_calls:
+                        tc_names = []
+                        for tc in resp.tool_calls:
+                            name = tc.get("name", "") or tc.get("function", {}).get("name", "")
+                            if name:
+                                tc_names.append(name)
+                        if tc_names:
+                            label_text += f'  {", ".join(tc_names[:3])}'
+                            if len(tc_names) > 3:
+                                label_text += f"+{len(tc_names)-3}"
+                    # Content 摘要
+                    if resp.content:
+                        preview = resp.content[:40].replace("\n", " ").strip()
+                        if len(resp.content) > 40:
+                            preview += "..."
+                        label_text += f'  {preview}'
+
                 detail_tooltip = {
                     "agent-name": f"{agent_label} #{local_num}",
                     "iter-count": "1",
@@ -317,7 +345,7 @@ class HTMLReporter:
                 }
 
                 detail_rows.append(self._gantt_row_html(
-                    label=f"#{local_num}",
+                    label=label_text,
                     tree_prefix="",
                     depth=0 if is_main else 1,
                     left_pct=i_left,
