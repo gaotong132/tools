@@ -400,7 +400,7 @@ SESSION_DETAIL_TEMPLATE = """
             }}
             const items = Array.from(list.querySelectorAll('.timing-item'));
             if (sortType === 'iteration') {{
-                items.sort((a, b) => parseInt(a.dataset.num) - parseInt(b.dataset.num));
+                items.sort((a, b) => parseInt(a.dataset.globalNum) - parseInt(b.dataset.globalNum));
             }} else if (sortType === 'llm') {{
                 items.sort((a, b) => parseFloat(b.dataset.llm) - parseFloat(a.dataset.llm));
             }} else if (sortType === 'tool') {{
