@@ -547,7 +547,6 @@ SESSION_DETAIL_TEMPLATE = """
                 setTimeout(() => block.style.boxShadow = '', 2000);
             }});
         }}
-        }}
         (function() {{
             const btn = document.getElementById('goTopBtn');
             window.addEventListener('scroll', function() {{
