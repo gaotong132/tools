@@ -277,7 +277,8 @@ SESSION_DETAIL_TEMPLATE = """
 .timing-list {{ max-height: 300px; overflow-y: auto; }}
 .timing-item {{ display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid #e0e0e0; cursor: pointer; }}
 .timing-item:hover {{ background: #f8f9fa; }}
-.timing-item-num {{ width: 80px; font-weight: bold; color: #4a90d9; }}
+.timing-item-num {{ width: 130px; font-weight: bold; color: #4a90d9; }}
+.timing-agent {{ font-size: 11px; color: #7b1fa2; font-weight: bold; display: block; line-height: 1; margin-bottom: 1px; }}
 .timing-item-times {{ width: 260px; display: flex; }}
 .timing-item-time {{ font-size: 12px; width: 85px; }}
 .timing-item-time.llm {{ color: #388e3c; }}
@@ -285,6 +286,8 @@ SESSION_DETAIL_TEMPLATE = """
 .timing-item-time.total {{ color: #4a90d9; font-weight: bold; }}
 .timing-item-content {{ flex: 1; font-size: 13px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 .timing-item-content:hover {{ overflow: visible; white-space: normal; }}
+.timing-item-tools {{ width: 160px; font-size: 11px; color: #f57c00; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }}
+.timing-item-tools:hover {{ overflow: visible; white-space: normal; }}
 .global-ref {{ font-size: 10px; color: #aaa; font-weight: normal; }}
 /* Go to Top */
 .go-top-btn {{ position: fixed; bottom: 30px; right: 30px; width: 44px; height: 44px; background: #4a90d9; color: white; border: none; border-radius: 50%; cursor: pointer; font-size: 20px; line-height: 44px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.2); opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s, background 0.2s; z-index: 1000; }}
@@ -511,12 +514,13 @@ TIMING_LIST_TEMPLATE = """
 
 TIMING_ITEM_TEMPLATE = """
 <div class="timing-item" data-num="{local_num}" data-global-num="{global_num}" data-llm="{llm_seconds}" data-tool="{tool_seconds}" data-total="{total_seconds}" onclick="jumpToIteration({global_num})">
-    <div class="timing-item-num">#{local_num} <span class="global-ref">({global_num})</span></div>
+    <div class="timing-item-num"><span class="timing-agent">{agent_label}</span> #{local_num} <span class="global-ref">({global_num})</span></div>
     <div class="timing-item-times">
         <span class="timing-item-time total">Total: {total_duration}</span>
         <span class="timing-item-time llm">LLM: {llm_duration}</span>
         <span class="timing-item-time tool">Tool: {tool_duration}</span>
     </div>
+    <div class="timing-item-tools" title="{tool_names}">{tool_names}</div>
     <div class="timing-item-content" title="{content_full}">{content_preview}</div>
 </div>
 """

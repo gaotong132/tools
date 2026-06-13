@@ -364,36 +364,58 @@ class HTMLReporter:
         if not chain.iteration_timings:
             return ""
 
-        # 构建 response_map
+        # 构建配对 + 按 session 分组计算本地编号
         sorted_items = pair_requests_responses(chain.requests, chain.responses)
-        response_map: Dict[int, Optional[LLMResponse]] = {}
+
+        # 构建 session_id -> 显示名称
+        sa_label_map: Dict[str, str] = {chain.session_id: "Main"}
+        for sa in chain.subagents:
+            label = sa.chain_path[-1] if sa.chain_path else self._short_session_id(sa.session_id)
+            sa_label_map[sa.session_id] = label
+
+        # 一次遍历：分配 global_num、local_num、收集 response
+        global_data: Dict[int, Dict] = {}
+        session_counters: Dict[str, int] = {}
         for i, item in enumerate(sorted_items):
-            response_map[i + 1] = item["response"]
+            req = item["request"]
+            resp = item["response"]
+            sid = req.session_id if req else resp.session_id
+            if sid not in session_counters:
+                session_counters[sid] = 0
+            session_counters[sid] += 1
+            global_data[i + 1] = {
+                "response": resp,
+                "local_num": session_counters[sid],
+                "agent_label": sa_label_map.get(sid, self._short_session_id(sid)),
+            }
 
         timing_items: List[str] = []
         for timing in chain.iteration_timings:
-            resp = response_map.get(timing.iteration_num)
+            data = global_data.get(timing.iteration_num, {})
+            resp = data.get("response")
+            local_num = data.get("local_num", timing.iteration_num)
+            agent_label = data.get("agent_label", "Unknown")
+
             content = resp.content if resp else ""
-            # content 为空时 fallback 到 reasoning 或 tool_calls
-            if not content and resp:
-                if resp.reasoning_content:
-                    content = resp.reasoning_content
-                elif resp.tool_calls:
-                    names = []
-                    for tc in resp.tool_calls:
-                        name = tc.get("name", "") or tc.get("function", {}).get("name", "")
-                        if name:
-                            names.append(name)
-                    if names:
-                        content = f"[Tool Calls: {', '.join(names)}]"
             content_preview = content[:80] + "..." if len(content) > 80 else content
             if not content_preview:
                 content_preview = "(no content)"
 
+            # 提取 tool call 名称
+            tool_names = ""
+            if resp and resp.tool_calls:
+                names = []
+                for tc in resp.tool_calls:
+                    name = tc.get("name", "") or tc.get("function", {}).get("name", "")
+                    if name:
+                        names.append(name)
+                tool_names = ", ".join(names)
+
             total_seconds = timing.llm_call_duration + timing.tool_processing_duration
 
             item_html = TIMING_ITEM_TEMPLATE.format(
-                local_num=timing.iteration_num,
+                agent_label=html.escape(agent_label),
+                local_num=local_num,
                 global_num=timing.iteration_num,
                 llm_seconds=timing.llm_call_duration,
                 tool_seconds=timing.tool_processing_duration,
@@ -401,6 +423,7 @@ class HTMLReporter:
                 llm_duration=self._format_duration(timing.llm_call_duration),
                 tool_duration=self._format_duration(timing.tool_processing_duration),
                 total_duration=self._format_duration(total_seconds),
+                tool_names=html.escape(tool_names),
                 content_preview=html.escape(content_preview),
                 content_full=html.escape(content),
             )
