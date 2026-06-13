@@ -313,6 +313,8 @@ class HTMLReporter:
 
                 # 构建标签：#N + tool calls + content 摘要
                 label_text = f"#{local_num}"
+                full_content = ""
+                full_tool_calls = ""
                 resp = resp_lookup.get(round(timing.response_timestamp, 3))
                 if resp:
                     # Tool call 名称
@@ -326,8 +328,10 @@ class HTMLReporter:
                             label_text += f'  {", ".join(tc_names[:3])}'
                             if len(tc_names) > 3:
                                 label_text += f"+{len(tc_names)-3}"
+                            full_tool_calls = ", ".join(tc_names)
                     # Content 摘要
                     if resp.content:
+                        full_content = resp.content
                         preview = resp.content[:40].replace("\n", " ").strip()
                         if len(resp.content) > 40:
                             preview += "..."
@@ -342,6 +346,8 @@ class HTMLReporter:
                     "llm-pct": "0",
                     "tool-pct": "0",
                     "time-range": f"{self._format_timestamp(iter_start)} - {self._format_timestamp(bar_end)}",
+                    "full-content": full_content,
+                    "tool-calls": full_tool_calls,
                 }
 
                 detail_rows.append(self._gantt_row_html(
