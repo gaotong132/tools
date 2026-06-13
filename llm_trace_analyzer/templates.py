@@ -458,12 +458,24 @@ SESSION_DETAIL_TEMPLATE = """
             const toolCalls = bar.dataset.toolCalls;
 
             if (fullContent !== undefined && fullContent !== '') {{
-                // Detail row: show content + tool calls
+                // Detail row: show timing stats + tools + content
+                const iters = bar.dataset.iterCount;
+                const llm = bar.dataset.llm;
+                const tool = bar.dataset.tool;
+                const total = bar.dataset.total;
+                const llmPct = bar.dataset.llmPct;
+                const toolPct = bar.dataset.toolPct;
+                const timeRange = bar.dataset.timeRange;
                 const tcHtml = toolCalls
                     ? `<div class="tt-row"><span class="tt-label">Tools</span><span class="tt-value tt-tools">${{toolCalls}}</span></div>`
                     : '';
                 tt.innerHTML = `
                     <div class="tt-name">${{name}}</div>
+                    <div class="tt-bar"><div class="tt-bar-llm" style="width:${{llmPct}}%"></div><div class="tt-bar-tool" style="width:${{toolPct}}%"></div></div>
+                    <div class="tt-row"><span class="tt-label">LLM</span><span class="tt-value">${{llm}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Tool</span><span class="tt-value">${{tool}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Total</span><span class="tt-value">${{total}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Time</span><span class="tt-value">${{timeRange}}</span></div>
                     ${{tcHtml}}
                     <div class="tt-content">${{fullContent}}</div>
                 `;

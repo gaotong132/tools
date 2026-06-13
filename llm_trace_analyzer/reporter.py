@@ -337,14 +337,19 @@ class HTMLReporter:
                             preview += "..."
                         label_text += f'  {preview}'
 
+                # LLM/Tool 百分比
+                iter_total = timing.llm_call_duration + timing.tool_processing_duration
+                llm_pct = (timing.llm_call_duration / iter_total * 100) if iter_total > 0 else 0
+                tool_pct = (timing.tool_processing_duration / iter_total * 100) if iter_total > 0 else 0
+
                 detail_tooltip = {
                     "agent-name": f"{agent_label} #{local_num}",
                     "iter-count": "1",
                     "llm": self._format_duration(timing.llm_call_duration),
                     "tool": self._format_duration(timing.tool_processing_duration),
-                    "total": self._format_duration(timing.llm_call_duration + timing.tool_processing_duration),
-                    "llm-pct": "0",
-                    "tool-pct": "0",
+                    "total": self._format_duration(iter_total),
+                    "llm-pct": f"{llm_pct:.1f}",
+                    "tool-pct": f"{tool_pct:.1f}",
                     "time-range": f"{self._format_timestamp(iter_start)} - {self._format_timestamp(bar_end)}",
                     "full-content": full_content,
                     "tool-calls": full_tool_calls,
@@ -352,6 +357,7 @@ class HTMLReporter:
 
                 detail_rows.append(self._gantt_row_html(
                     label=label_text,
+                    label_title=full_content,
                     tree_prefix="",
                     depth=0 if is_main else 1,
                     left_pct=i_left,
@@ -415,6 +421,7 @@ class HTMLReporter:
         left_pct: float, width_pct: float, segments_html: str,
         first_global: int, tooltip_data: Dict,
         expandable_id: str = "",
+        label_title: str = "",
     ) -> str:
         depth_class = "parent" if depth == 0 else str(min(depth - 1, 2))
         data_attrs = " ".join(f'data-{k}="{html.escape(str(v))}"' for k, v in tooltip_data.items())
@@ -425,9 +432,10 @@ class HTMLReporter:
                 f'onclick="event.stopPropagation();toggleGanttExpand(\'{expandable_id}\', this)" '
                 f'title="展开详情">&#9654;</button>'
             )
+        title_attr = f' title="{html.escape(label_title)}"' if label_title else ""
         return (
             f'<div class="gantt-row">'
-            f'<div class="gantt-label" style="padding-left:{depth * 16}px">'
+            f'<div class="gantt-label" style="padding-left:{depth * 16}px"{title_attr}>'
             f'{expand_btn}'
             f'<span class="gantt-tree">{html.escape(tree_prefix)}</span>'
             f'{html.escape(label)}'
