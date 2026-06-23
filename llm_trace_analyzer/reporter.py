@@ -160,8 +160,11 @@ class HTMLReporter:
         if not chain.iteration_timings:
             return ""
 
-        session_start = chain.start_time
-        session_end = chain.end_time
+        # 使用非零时间戳计算 session 范围，避免 timestamp=0 导致定位错误
+        non_zero_starts = [t.request_timestamp for t in chain.iteration_timings if t.request_timestamp > 0]
+        non_zero_ends = [t.response_timestamp for t in chain.iteration_timings if t.response_timestamp > 0]
+        session_start = min(non_zero_starts) if non_zero_starts else chain.start_time
+        session_end = max(non_zero_ends) if non_zero_ends else chain.end_time
         total_span = max(session_end - session_start, 0.001)
 
         # 按 session_id 分组 timings
@@ -185,6 +188,8 @@ class HTMLReporter:
         )
 
         def find_spawn_parent(start_time: float) -> int:
+            if start_time <= 0:
+                return 0
             result = 0
             for pnum, pts in parent_resp_times:
                 if pts <= start_time + 1.0:
@@ -193,8 +198,7 @@ class HTMLReporter:
                     break
             return result
 
-        # 按 agent 分组的有序列表
-        agent_order: List[str] = []  # session_id 顺序
+        # 按 agent 分组的有序列表（去重，Main 优先）
         sort_entries: List[Tuple] = []
         session_counters: Dict[str, int] = {}
         for timing in chain.iteration_timings:
@@ -211,9 +215,15 @@ class HTMLReporter:
                 sort_entries.append((spawn_parent, 1, sid, local_num, timing))
 
         sort_entries.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
+
+        # 构建去重的 agent_order，Main 始终在前
+        seen: set = set()
+        agent_order: List[str] = [chain.session_id]
+        seen.add(chain.session_id)
         for entry in sort_entries:
             sid = entry[4].session_id
-            if not agent_order or agent_order[-1] != sid:
+            if sid not in seen:
+                seen.add(sid)
                 agent_order.append(sid)
 
         # 生成行
@@ -253,36 +263,41 @@ class HTMLReporter:
 
             # === Agent 级别摘要 bar ===
             if agent_timings:
-                a_start = agent_timings[0].request_timestamp
-                a_end = max(t.response_timestamp + (t.tool_processing_duration or 0) for t in agent_timings)
-                a_span = max(a_end - a_start, 0.001)
-                bar_left = ((a_start - session_start) / total_span) * 100
-                bar_width = max(((a_end - a_start) / total_span) * 100, 0.5)
+                # 使用非零时间戳计算位置
+                valid_starts = [t.request_timestamp for t in agent_timings if t.request_timestamp > 0]
+                valid_ends = [t.response_timestamp + (t.tool_processing_duration or 0)
+                              for t in agent_timings if t.response_timestamp > 0]
+                if valid_starts and valid_ends:
+                    a_start = min(valid_starts)
+                    a_end = max(valid_ends)
+                    a_span = max(a_end - a_start, 0.001)
+                    bar_left = max(((a_start - session_start) / total_span) * 100, 0)
+                    bar_width = max(((a_end - a_start) / total_span) * 100, 0.5)
 
-                # 构建 LLM + Tool 段
-                segments: List[str] = []
-                for t in agent_timings:
-                    llm_w = max((t.llm_call_duration / a_span) * 100, 0.3)
-                    segments.append(f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.2f}%"></div>')
-                    if t.tool_processing_duration > 0:
-                        tool_w = max((t.tool_processing_duration / a_span) * 100, 0.8)
-                        segments.append(f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.2f}%"></div>')
+                    # 构建 LLM + Tool 段
+                    segments: List[str] = []
+                    for t in agent_timings:
+                        llm_w = max((t.llm_call_duration / a_span) * 100, 0.3)
+                        segments.append(f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.2f}%"></div>')
+                        if t.tool_processing_duration > 0:
+                            tool_w = max((t.tool_processing_duration / a_span) * 100, 0.8)
+                            segments.append(f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.2f}%"></div>')
 
-                agent_resps = [r for r in chain.responses if r.session_id == sid]
-                tooltip = self._tooltip_data(agent_timings, agent_label, responses=agent_resps)
-                iter_count = len(agent_timings)
+                    agent_resps = [r for r in chain.responses if r.session_id == sid]
+                    tooltip = self._tooltip_data(agent_timings, agent_label, responses=agent_resps)
+                    iter_count = len(agent_timings)
 
-                rows.append(self._gantt_row_html(
-                    label=f"{agent_label} ({iter_count})",
-                    tree_prefix="",
-                    depth=0 if is_main else 1,
-                    left_pct=bar_left,
-                    width_pct=bar_width,
-                    segments_html="".join(segments),
-                    first_global=agent_timings[0].iteration_num,
-                    tooltip_data=tooltip,
-                    expandable_id=expand_id,
-                ))
+                    rows.append(self._gantt_row_html(
+                        label=f"{agent_label} ({iter_count})",
+                        tree_prefix="",
+                        depth=0 if is_main else 1,
+                        left_pct=bar_left,
+                        width_pct=bar_width,
+                        segments_html="".join(segments),
+                        first_global=agent_timings[0].iteration_num,
+                        tooltip_data=tooltip,
+                        expandable_id=expand_id,
+                    ))
 
             # === 展开内容：逐 iteration 细节行 ===
             # 构建该 agent 的 response 查找表（按 response_timestamp 匹配）
@@ -303,8 +318,13 @@ class HTMLReporter:
                 bar_end = max(tool_end, iter_end)
                 iter_span = max(bar_end - iter_start, 0.001)
 
-                i_left = ((iter_start - session_start) / total_span) * 100
-                i_width = max(((bar_end - iter_start) / total_span) * 100, 0.3)
+                # 处理 timestamp=0 的情况
+                if iter_start <= 0:
+                    i_left = 0
+                    i_width = 0.3
+                else:
+                    i_left = max(((iter_start - session_start) / total_span) * 100, 0)
+                    i_width = max(((bar_end - iter_start) / total_span) * 100, 0.3)
 
                 llm_w = max((timing.llm_call_duration / iter_span) * 100, 0.5)
                 segs = [f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.1f}%"></div>']
