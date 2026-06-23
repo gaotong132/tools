@@ -198,68 +198,101 @@ class HTMLReporter:
                     break
             return result
 
-        # 按 agent 分组的有序列表（去重，Main 优先）
-        sort_entries: List[Tuple] = []
-        session_counters: Dict[str, int] = {}
+        # 预计算每个 subAgent 的 spawn_parent（用首个非零时间戳）
+        spawn_parent_by_session: Dict[str, int] = {}
         for timing in chain.iteration_timings:
             sid = timing.session_id
-            if sid not in session_counters:
-                session_counters[sid] = 0
-            session_counters[sid] += 1
-            local_num = session_counters[sid]
+            if sid != chain.session_id and sid not in spawn_parent_by_session:
+                if timing.request_timestamp > 0:
+                    spawn_parent_by_session[sid] = find_spawn_parent(timing.request_timestamp)
 
-            if sid == chain.session_id:
-                sort_entries.append((timing.iteration_num, 0, "", local_num, timing))
-            else:
-                spawn_parent = find_spawn_parent(timing.request_timestamp)
-                sort_entries.append((spawn_parent, 1, sid, local_num, timing))
+        # 对仍无 spawn_parent 的 subAgent，找其首个非零 timing
+        for sid in set(t.session_id for t in chain.iteration_timings if t.session_id != chain.session_id):
+            if sid not in spawn_parent_by_session:
+                non_zero = [t for t in chain.iteration_timings if t.session_id == sid and t.request_timestamp > 0]
+                if non_zero:
+                    spawn_parent_by_session[sid] = find_spawn_parent(non_zero[0].request_timestamp)
+                else:
+                    spawn_parent_by_session[sid] = 0
 
-        sort_entries.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
+        # 按 spawn_parent 分组 subAgent
+        subagent_groups: Dict[int, List[str]] = {}  # spawn_parent_global -> [session_ids]
+        for sid, sp in spawn_parent_by_session.items():
+            if sp not in subagent_groups:
+                subagent_groups[sp] = []
+            if sid not in subagent_groups[sp]:
+                subagent_groups[sp].append(sid)
 
-        # 构建去重的 agent_order，Main 始终在前
-        seen: set = set()
-        agent_order: List[str] = [chain.session_id]
-        seen.add(chain.session_id)
-        for entry in sort_entries:
-            sid = entry[4].session_id
-            if sid not in seen:
-                seen.add(sid)
-                agent_order.append(sid)
+        # 将 Main 的 iterations 按 spawn 点切分成段
+        main_timings = sorted(
+            [t for t in chain.iteration_timings if t.session_id == chain.session_id],
+            key=lambda t: t.iteration_num
+        )
+        # spawn 点：哪些 Main iteration 后面有 subAgent
+        spawn_points = sorted(subagent_groups.keys())
+
+        # 构建 Main 分段
+        main_segments: List[Tuple[str, List]] = []  # (segment_id, [timings])
+        prev_end = 0
+        seg_idx = 0
+        for sp in spawn_points:
+            seg_timings = [t for t in main_timings if prev_end < t.iteration_num <= sp]
+            if seg_timings:
+                main_segments.append((f"__main_seg_{seg_idx}__", seg_timings))
+                seg_idx += 1
+            prev_end = sp
+        # 最后一段
+        remaining = [t for t in main_timings if t.iteration_num > prev_end]
+        if remaining:
+            main_segments.append((f"__main_seg_{seg_idx}__", remaining))
+        if not main_segments and main_timings:
+            main_segments.append((f"__main_seg_0__", main_timings))
+
+        # 构建交替序列：main_seg, sub_group, main_seg, sub_group, ...
+        # 用 (sort_key, type, id, timings) 表示每个条目
+        timeline_entries: List[Tuple[int, str, str, List]] = []
+        for seg_id, seg_timings in main_segments:
+            last_global = seg_timings[-1].iteration_num
+            timeline_entries.append((last_global, 0, seg_id, seg_timings))
+            # 在这个 Main 段之后插入 spawn 的 subAgent 组
+            if last_global in subagent_groups:
+                for sub_sid in sorted(subagent_groups[last_global]):
+                    sub_t = [t for t in chain.iteration_timings if t.session_id == sub_sid]
+                    timeline_entries.append((last_global, 1, sub_sid, sub_t))
+
+        # 按 (sort_key, type) 排序：同 sort_key 下 Main(0) 在 SubAgent(1) 之前
+        timeline_entries.sort(key=lambda x: (x[0], x[1]))
+
+        # 处理没有 spawn 点的 subAgent（spawn_parent=0 或不在 spawn_points 中）
+        handled_subs = set()
+        for _, _, sid, _ in timeline_entries:
+            if not sid.startswith("__"):
+                handled_subs.add(sid)
+        for sid, sp in spawn_parent_by_session.items():
+            if sid not in handled_subs:
+                sub_t = [t for t in chain.iteration_timings if t.session_id == sid]
+                timeline_entries.append((sp, 1, sid, sub_t))
+        timeline_entries.sort(key=lambda x: (x[0], x[1]))
 
         # 生成行
         rows: List[str] = []
         row_counter = 0
+        main_seg_counter = 0
 
-        for group_idx, sid in enumerate(agent_order):
+        for group_idx, (sort_key, entry_type, sid, agent_timings) in enumerate(timeline_entries):
             row_counter += 1
             expand_id = f"gantt-expand-{row_counter}"
-            agent_label = sa_label_map.get(sid, self._short_session_id(sid))
-            is_main = sid == chain.session_id
 
-            # 收集该 agent 在当前分组中的 timings
-            group_timings = [e[4] for e in sort_entries if e[4].session_id == sid]
-            # 如果是 Main，只取当前窗口（与前后 subAgent 之间的部分）
-            if is_main and len(agent_order) > 1:
-                # 确定该 Main 窗口的时间范围
-                prev_end = session_start
-                if group_idx > 0:
-                    prev_sid = agent_order[group_idx - 1]
-                    prev_t = [e[4] for e in sort_entries if e[4].session_id == prev_sid]
-                    if prev_t:
-                        prev_end = max(t.response_timestamp + (t.tool_processing_duration or 0) for t in prev_t)
-                next_start = session_end
-                if group_idx < len(agent_order) - 1:
-                    next_sid = agent_order[group_idx + 1]
-                    next_t = [e[4] for e in sort_entries if e[4].session_id == next_sid]
-                    if next_t:
-                        next_start = min(t.request_timestamp for t in next_t)
+            is_main_seg = sid.startswith("__main_seg_")
+            is_main = is_main_seg or sid == chain.session_id
 
-                group_timings = [
-                    t for t in group_timings
-                    if t.request_timestamp >= prev_end - 0.5 and t.response_timestamp <= next_start + 0.5
-                ]
+            if is_main_seg:
+                agent_label = f"Main #{main_seg_counter + 1}"
+                main_seg_counter += 1
+            else:
+                agent_label = sa_label_map.get(sid, self._short_session_id(sid))
 
-            agent_timings = group_timings if group_timings else timings_by_session.get(sid, [])
+            lookup_sid = chain.session_id if is_main_seg else sid
 
             # === Agent 级别摘要 bar ===
             if agent_timings:
@@ -283,14 +316,14 @@ class HTMLReporter:
                             tool_w = max((t.tool_processing_duration / a_span) * 100, 0.8)
                             segments.append(f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.2f}%"></div>')
 
-                    agent_resps = [r for r in chain.responses if r.session_id == sid]
+                    agent_resps = [r for r in chain.responses if r.session_id == lookup_sid]
                     tooltip = self._tooltip_data(agent_timings, agent_label, responses=agent_resps)
                     iter_count = len(agent_timings)
 
                     rows.append(self._gantt_row_html(
                         label=f"{agent_label} ({iter_count})",
                         tree_prefix="",
-                        depth=0 if is_main else 1,
+                        depth=0,
                         left_pct=bar_left,
                         width_pct=bar_width,
                         segments_html="".join(segments),
@@ -303,14 +336,12 @@ class HTMLReporter:
             # 构建该 agent 的 response 查找表（按 response_timestamp 匹配）
             resp_lookup: Dict[float, LLMResponse] = {}
             for r in chain.responses:
-                if r.session_id == sid:
+                if r.session_id == lookup_sid:
                     resp_lookup[round(r.timestamp, 3)] = r
 
             detail_rows: List[str] = []
-            detail_entries = [e for e in sort_entries if e[4] in agent_timings]
-            for entry in detail_entries:
-                local_num = entry[3]
-                timing = entry[4]
+            for local_idx, timing in enumerate(agent_timings):
+                local_num = local_idx + 1
 
                 iter_start = timing.request_timestamp
                 iter_end = timing.response_timestamp
@@ -390,7 +421,7 @@ class HTMLReporter:
                     label=label_text,
                     label_title=full_content,
                     tree_prefix="",
-                    depth=0 if is_main else 1,
+                    depth=0,
                     left_pct=i_left,
                     width_pct=i_width,
                     segments_html="".join(segs),
@@ -403,7 +434,7 @@ class HTMLReporter:
             rows.append('</div>')
 
         return GANTT_PANEL_TEMPLATE.format(
-            agent_count=len(agent_order),
+            agent_count=len(timeline_entries),
             total_duration=self._format_duration(session_end - session_start),
             gantt_bars_html="\n".join(rows),
         )
