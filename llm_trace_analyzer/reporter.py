@@ -136,6 +136,11 @@ class HTMLReporter:
         num_iters = len(chain.iteration_timings)
         avg_llm = chain.total_llm_duration_seconds / num_iters if num_iters > 0 else 0
 
+        # 统计总迭代次数、模型调用次数、工具调用次数
+        total_iterations = len(chain.iteration_timings)
+        total_model_calls = total_iterations  # 每次迭代调用一次模型
+        total_tool_calls = sum(len(resp.tool_calls) for resp in chain.responses if resp.tool_calls)
+
         html_content = SESSION_DETAIL_TEMPLATE.format(
             session_id_short=short_id,
             session_id=chain.session_id,
@@ -147,6 +152,9 @@ class HTMLReporter:
             total_llm_duration=self._format_duration(chain.total_llm_duration_seconds),
             total_tool_duration=self._format_duration(chain.total_tool_duration_seconds),
             avg_llm_per_iter=self._format_duration(avg_llm),
+            total_iterations_count=total_iterations,
+            total_model_calls=total_model_calls,
+            total_tool_calls=total_tool_calls,
             gantt_html=gantt_html,
             timing_list_html=timing_list_html,
             iterations_html=iterations_html,

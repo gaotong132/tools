@@ -330,6 +330,7 @@ SESSION_DETAIL_TEMPLATE = """
             <h1>Session: {session_id_short}</h1>
             <div class="meta">Model: {model_name} | Iterations: {total_iterations} | {start_time} - {end_time}</div>
             <div class="meta">Duration: {session_duration} | LLM: {total_llm_duration} | Tool: {total_tool_duration} | Avg LLM: {avg_llm_per_iter}</div>
+            <div class="meta">Iterations: {total_iterations_count} | Model Calls: {total_model_calls} | Tool Calls: {total_tool_calls}</div>
         </div>
         {gantt_html}
         {timing_list_html}
