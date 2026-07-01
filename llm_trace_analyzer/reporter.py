@@ -87,6 +87,13 @@ class HTMLReporter:
             total_iterations=stats.total_iterations,
             total_duration=self._format_duration(stats.total_duration_seconds),
             avg_llm_time=self._format_duration(stats.avg_llm_time_seconds),
+            total_input_tokens=stats.total_input_tokens,
+            total_output_tokens=stats.total_output_tokens,
+            total_tokens=stats.total_tokens,
+            total_cache_tokens=stats.total_cache_tokens,
+            total_input_cost=stats.total_input_cost,
+            total_output_cost=stats.total_output_cost,
+            total_cost=stats.total_cost,
             session_rows="\n".join(session_rows),
         )
 

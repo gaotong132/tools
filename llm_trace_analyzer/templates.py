@@ -139,6 +139,13 @@ INDEX_TEMPLATE = """
             <span><strong>{total_duration}</strong> total time</span>
             <span><strong>{avg_llm_time}</strong> avg LLM</span>
         </div>
+        <div class="stats" style="background: #48bb78; margin-top: 10px;">
+            <span><strong>{total_input_tokens:,}</strong> input tokens</span>
+            <span><strong>{total_output_tokens:,}</strong> output tokens</span>
+            <span><strong>{total_tokens:,}</strong> total tokens</span>
+            <span><strong>{total_cache_tokens:,}</strong> cache tokens</span>
+            <span><strong>${total_cost:.4f}</strong> total cost</span>
+        </div>
         <table>
             <tr>
                 <th>Session ID</th>

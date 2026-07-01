@@ -1,6 +1,7 @@
 """LLM_IO_TRACE 解析器 - 分片合并与JSON解析"""
 
 import json
+import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -235,6 +236,10 @@ class TraceParser:
 
         tool_calls = body_dict.get("tool_calls", [])
 
+        # 解析 usage_metadata
+        usage_metadata = body_dict.get("usage_metadata", "")
+        token_stats = self._parse_usage_metadata(usage_metadata)
+
         return LLMResponse(
             session_id=session_id,
             iteration=iteration,
@@ -243,7 +248,42 @@ class TraceParser:
             content=content,
             reasoning_content=reasoning_content,
             tool_calls=tool_calls,
+            input_tokens=token_stats.get("input_tokens", 0),
+            output_tokens=token_stats.get("output_tokens", 0),
+            total_tokens=token_stats.get("total_tokens", 0),
+            cache_tokens=token_stats.get("cache_tokens", 0),
+            input_cost=token_stats.get("input_cost", 0.0),
+            output_cost=token_stats.get("output_cost", 0.0),
+            total_cost=token_stats.get("total_cost", 0.0),
         )
+
+    def _parse_usage_metadata(self, usage_str: str) -> Dict[str, Any]:
+        """解析 usage_metadata 字符串，提取 token 统计信息。
+
+        格式: "code=0 err_msg='' prompt='' task_id='' model_name='glm-5.1'
+               total_latency=0.0 first_token_time='******' request_start_time=''
+               input_tokens=23661 output_tokens=3546 total_tokens=27207
+               cache_tokens=0 input_cost=0.0 output_cost=0.0 total_cost=0.0"
+        """
+        if not usage_str:
+            return {}
+
+        result = {}
+        # 提取数值字段
+        int_fields = ["input_tokens", "output_tokens", "total_tokens", "cache_tokens"]
+        float_fields = ["input_cost", "output_cost", "total_cost"]
+
+        for field in int_fields:
+            match = re.search(rf"{field}=(\d+)", usage_str)
+            if match:
+                result[field] = int(match.group(1))
+
+        for field in float_fields:
+            match = re.search(rf"{field}=([\d.]+)", usage_str)
+            if match:
+                result[field] = float(match.group(1))
+
+        return result
 
     def _merge_body_parts(self, traces: List[Dict[str, Any]]) -> str:
         if not traces:

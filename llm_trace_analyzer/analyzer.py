@@ -469,6 +469,15 @@ class ChainAnalyzer:
         total_duration = 0.0
         total_iterations_count = 0
 
+        # Token 统计
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_tokens = 0
+        total_cache_tokens = 0
+        total_input_cost = 0.0
+        total_output_cost = 0.0
+        total_cost = 0.0
+
         for chain in sessions.values():
             if not chain.is_subagent:
                 stats.total_requests += len(chain.requests)
@@ -487,9 +496,28 @@ class ChainAnalyzer:
                 if chain.start_time and chain.end_time:
                     total_duration += chain.end_time - chain.start_time
 
+                # Token 统计（从 responses 中累加）
+                for resp in chain.responses:
+                    total_input_tokens += resp.input_tokens
+                    total_output_tokens += resp.output_tokens
+                    total_tokens += resp.total_tokens
+                    total_cache_tokens += resp.cache_tokens
+                    total_input_cost += resp.input_cost
+                    total_output_cost += resp.output_cost
+                    total_cost += resp.total_cost
+
         stats.total_duration_seconds = total_duration
         stats.total_llm_time_seconds = total_llm_time
         stats.total_tool_time_seconds = total_tool_time
+
+        # Token 统计
+        stats.total_input_tokens = total_input_tokens
+        stats.total_output_tokens = total_output_tokens
+        stats.total_tokens = total_tokens
+        stats.total_cache_tokens = total_cache_tokens
+        stats.total_input_cost = total_input_cost
+        stats.total_output_cost = total_output_cost
+        stats.total_cost = total_cost
 
         # 计算平均值
         if total_iterations_count > 0:

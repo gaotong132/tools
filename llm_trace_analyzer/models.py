@@ -42,6 +42,14 @@ class LLMResponse:
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
     source: str = "parent"
     source_label: str = ""
+    # Token 统计
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cache_tokens: int = 0
+    input_cost: float = 0.0
+    output_cost: float = 0.0
+    total_cost: float = 0.0
 
 
 @dataclass
@@ -85,6 +93,14 @@ class Statistics:
     total_tool_time_seconds: float = 0.0  # 工具调用+思考总时间
     avg_llm_time_seconds: float = 0.0  # 平均每次模型调用耗时
     avg_tool_time_seconds: float = 0.0  # 平均每次工具调用+思考耗时
+    # Token 统计
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_tokens: int = 0
+    total_cache_tokens: int = 0
+    total_input_cost: float = 0.0
+    total_output_cost: float = 0.0
+    total_cost: float = 0.0
 
 
 @dataclass
