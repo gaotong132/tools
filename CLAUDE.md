@@ -8,9 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Setup (uv recommended)
 uv venv && uv pip install -e .[dev]
 
-# Run tools
-ha                              # Analyze Agent session history (auto-finds latest)
-ha <json_file> -o report.html   # Analyze specific file
+# Run
 lt                              # Analyze LLM request traces (auto-finds full.json)
 lt <log_file> -o report_dir     # Analyze specific log (supports .json and .log formats)
 lt --session <id>               # Filter by session ID
@@ -22,18 +20,7 @@ pytest
 
 ## Architecture
 
-Two modular Python tools, each a self-contained package with consistent structure:
-
 ```
-agent_history_analyzer/  (CLI: ha)
-├── loader.py      # JSON file loading, auto-find latest history.json
-├── analyzer.py    # EventAnalyzer - processes events, builds timeline
-├── models.py      # RequestData, AnalysisResult, Statistics, FlowItem
-├── reporter.py    # HTMLReporter - generates visualization
-├── templates.py   # HTML/CSS templates for report
-├── constants.py   # EventType, FlowItemType enums
-└── main.py        # CLI entry point
-
 llm_trace_analyzer/  (CLI: lt)
 ├── loader.py      # LogLoader - parses LLM_IO_TRACE logs (JSON Lines or text), auto-find full.json
 ├── parser.py      # TraceParser - merges fragmented request bodies
@@ -47,25 +34,16 @@ llm_trace_analyzer/  (CLI: lt)
 
 Key patterns:
 - Entry points defined in `pyproject.toml` `[project.scripts]`
-- Each package exports main class via `__init__.py`
+- Package exports main class via `__init__.py`
 - Reports use embedded HTML templates (no external template engine)
 
 ## Default Search Paths
 
-- **ha**: `~/.office-claw/.jiuwenclaw/agent/sessions/` (recursive search for `history.json`)
-- **lt**: `~/.office-claw/.jiuwenclaw/service_default/.logs/full.json` (fallback: `full.log`)
+- `~/.office-claw/.jiuwenclaw/service_default/.logs/full.json` (fallback: `full.log`)
 
 ## Data Flow
 
-**agent_history_analyzer**: JSON → EventAnalyzer.analyze() → AnalysisResult → HTMLReporter.generate()
-
-Events processed (EventType enum):
-- `context.compressed` → compression metrics
-- `chat.delta` → reasoning chunks (LLM_REASONING source)
-- `chat.final` → assistant response (ANSWER source)
-- `chat.tool_call` / `chat.tool_result` → tool invocations
-
-**llm_trace_analyzer**: Log → LogLoader → TraceParser → ChainAnalyzer → AnalysisResult → HTMLReporter
+Log → LogLoader → TraceParser → ChainAnalyzer → AnalysisResult → HTMLReporter
 
 Parses `[LLM_IO_TRACE]` entries with:
 - Request body fragments (`body_part 1/N → N/N`) merged by TraceParser
