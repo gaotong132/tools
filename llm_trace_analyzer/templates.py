@@ -155,8 +155,8 @@ INDEX_TEMPLATE = """
 .chart-legend-color {{ width: 12px; height: 12px; border-radius: 2px; }}
 .chart-legend-llm {{ background: #4a90d9; }}
 .chart-legend-tool {{ background: #f57c00; }}
-.timing-chart {{ display: flex; align-items: flex-end; gap: 2px; height: 200px; padding: 0 4px; overflow-x: auto; border-bottom: 1px solid #e0e0e0; position: relative; }}
-.chart-bar-col {{ display: flex; flex-direction: column; align-items: center; min-width: 12px; flex: 1; max-width: 30px; cursor: pointer; }}
+.timing-chart {{ display: flex; align-items: flex-end; gap: 2px; height: 200px; padding: 0 4px; border-bottom: 1px solid #e0e0e0; position: relative; }}
+.chart-bar-col {{ display: flex; flex-direction: column; align-items: center; flex: 1; cursor: pointer; }}
 .chart-bar {{ display: flex; flex-direction: column; width: 100%; justify-content: flex-end; }}
 .chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
 .chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
@@ -435,8 +435,8 @@ SESSION_DETAIL_TEMPLATE = """
 .chart-legend-color {{ width: 12px; height: 12px; border-radius: 2px; }}
 .chart-legend-llm {{ background: #4a90d9; }}
 .chart-legend-tool {{ background: #f57c00; }}
-.timing-chart {{ display: flex; align-items: flex-end; gap: 2px; height: 200px; padding: 0 4px; overflow-x: auto; border-bottom: 1px solid #e0e0e0; position: relative; }}
-.chart-bar-col {{ display: flex; flex-direction: column; align-items: center; min-width: 12px; flex: 1; max-width: 30px; cursor: pointer; }}
+.timing-chart {{ display: flex; align-items: flex-end; gap: 2px; height: 200px; padding: 0 4px; border-bottom: 1px solid #e0e0e0; position: relative; }}
+.chart-bar-col {{ display: flex; flex-direction: column; align-items: center; flex: 1; cursor: pointer; }}
 .chart-bar {{ display: flex; flex-direction: column; width: 100%; justify-content: flex-end; }}
 .chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
 .chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}

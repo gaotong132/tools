@@ -1181,8 +1181,6 @@ class HTMLReporter:
             llm_fmt = self._format_duration(t.llm_call_duration)
             tool_fmt = self._format_duration(t.tool_processing_duration)
             total_fmt = self._format_duration(t.llm_call_duration + t.tool_processing_duration)
-            show_label = len(sorted_timings) <= 50 or i % max(1, len(sorted_timings) // 20) == 1
-            x_label = f'<div class="chart-x-label">{i}</div>' if show_label else '<div class="chart-x-label"></div>'
             bars.append(
                 f'<div class="chart-bar-col" '
                 f'data-seq="{i}" data-llm="{llm_fmt}" data-tool="{tool_fmt}" data-total="{total_fmt}" '
@@ -1192,7 +1190,7 @@ class HTMLReporter:
                 f'<div class="chart-bar" style="height:{chart_height}px">'
                 f'<div class="chart-bar-tool" style="height:{tool_h:.1f}px"></div>'
                 f'<div class="chart-bar-llm" style="height:{llm_h:.1f}px"></div>'
-                f'</div>{x_label}</div>'
+                f'</div></div>'
             )
 
         return (
