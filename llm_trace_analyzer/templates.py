@@ -268,12 +268,14 @@ INDEX_TEMPLATE = """
 
         function toggleSelectAll(masterCb) {{
             const cbs = document.querySelectorAll('.session-cb[data-session-id]');
+            selectedSessions = [];
             cbs.forEach(cb => {{
-                if (cb.checked !== masterCb.checked) {{
-                    cb.checked = masterCb.checked;
-                    toggleSessionCompare(cb);
-                }}
+                cb.checked = masterCb.checked;
+                if (masterCb.checked) selectedSessions.push(cb.dataset.sessionId);
             }});
+            if (!masterCb.checked) baselineSessionId = null;
+            else if (!baselineSessionId && selectedSessions.length > 0) baselineSessionId = selectedSessions[0];
+            renderComparison();
         }}
 
         function setBaseline(sid) {{
