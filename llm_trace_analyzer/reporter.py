@@ -91,9 +91,6 @@ class HTMLReporter:
             total_output_tokens=stats.total_output_tokens,
             total_tokens=stats.total_tokens,
             total_cache_tokens=stats.total_cache_tokens,
-            total_input_cost=stats.total_input_cost,
-            total_output_cost=stats.total_output_cost,
-            total_cost=stats.total_cost,
             session_rows="\n".join(session_rows),
             statistics_html=self._generate_global_statistics_html(result),
         )
@@ -157,9 +154,6 @@ class HTMLReporter:
         session_output_tokens = sum(resp.output_tokens for resp in chain.responses)
         session_total_tokens = sum(resp.total_tokens for resp in chain.responses)
         session_cache_tokens = sum(resp.cache_tokens for resp in chain.responses)
-        session_input_cost = sum(resp.input_cost for resp in chain.responses)
-        session_output_cost = sum(resp.output_cost for resp in chain.responses)
-        session_total_cost = sum(resp.total_cost for resp in chain.responses)
 
         html_content = SESSION_DETAIL_TEMPLATE.format(
             session_id_short=short_id,
@@ -179,7 +173,6 @@ class HTMLReporter:
             session_output_tokens=session_output_tokens,
             session_total_tokens=session_total_tokens,
             session_cache_tokens=session_cache_tokens,
-            session_total_cost=session_total_cost,
             gantt_html=gantt_html,
             timing_list_html=timing_list_html,
             iterations_html=iterations_html,
@@ -1155,7 +1148,6 @@ class HTMLReporter:
             (self._format_duration(stats.total_llm_time_seconds), "LLM Total"),
             (self._format_duration(stats.total_tool_time_seconds), "Tool Total"),
             (f"{stats.total_tokens:,}", "Total Tokens"),
-            (f"${stats.total_cost:.4f}", "Total Cost"),
         ]
         for val, label in overview:
             parts.append(f'<div class="stat-card"><div class="stat-value">{val}</div><div class="stat-label">{label}</div></div>')
@@ -1224,19 +1216,6 @@ class HTMLReporter:
             parts.append(f'<div class="stat-row"><span class="stat-name">{name}</span><span class="stat-val">{val}</span></div>')
         parts.append('</div>')
 
-        # 成本统计（仅在有数据时展示）
-        if stats.total_cost > 0:
-            parts.append('<div class="stat-section">')
-            parts.append("<h3>Cost</h3>")
-            cost_rows = [
-                ("Input", f"${stats.total_input_cost:.4f}"),
-                ("Output", f"${stats.total_output_cost:.4f}"),
-                ("Total", f"${stats.total_cost:.4f}"),
-            ]
-            for name, val in cost_rows:
-                parts.append(f'<div class="stat-row"><span class="stat-name">{name}</span><span class="stat-val">{val}</span></div>')
-            parts.append('</div>')
-
         # 模型使用统计
         if stats.sessions_by_model:
             parts.append('<div class="stat-section">')
@@ -1253,7 +1232,7 @@ class HTMLReporter:
             parts.append(
                 '<table><tr>'
                 '<th>Session</th><th>Model</th><th>Iters</th>'
-                '<th>LLM</th><th>Tool</th><th>Tokens</th><th>Cost</th><th>Tool Calls</th>'
+                '<th>LLM</th><th>Tool</th><th>Tokens</th><th>Tool Calls</th>'
                 '</tr>'
             )
             for s in stats.session_stats:
@@ -1266,7 +1245,6 @@ class HTMLReporter:
                     f'<td>{self._format_duration(s["llm_time"])}</td>'
                     f'<td>{self._format_duration(s["tool_time"])}</td>'
                     f'<td>{s["tokens"]:,}</td>'
-                    f'<td>${s["cost"]:.4f}</td>'
                     f'<td>{s["tool_calls"]}</td>'
                     f'</tr>'
                 )
@@ -1301,7 +1279,6 @@ class HTMLReporter:
         s_output = sum(r.output_tokens for r in chain.responses)
         s_total = sum(r.total_tokens for r in chain.responses)
         s_cache = sum(r.cache_tokens for r in chain.responses)
-        s_cost = sum(r.total_cost for r in chain.responses)
 
         # 概览卡片
         parts.append('<div class="stat-cards">')
@@ -1371,21 +1348,6 @@ class HTMLReporter:
         for name, val in token_rows:
             parts.append(f'<div class="stat-row"><span class="stat-name">{name}</span><span class="stat-val">{val}</span></div>')
         parts.append('</div>')
-
-        # 成本统计
-        if s_cost > 0:
-            s_input_cost = sum(r.input_cost for r in chain.responses)
-            s_output_cost = sum(r.output_cost for r in chain.responses)
-            parts.append('<div class="stat-section">')
-            parts.append("<h3>Cost</h3>")
-            cost_rows = [
-                ("Input", f"${s_input_cost:.4f}"),
-                ("Output", f"${s_output_cost:.4f}"),
-                ("Total", f"${s_cost:.4f}"),
-            ]
-            for name, val in cost_rows:
-                parts.append(f'<div class="stat-row"><span class="stat-name">{name}</span><span class="stat-val">{val}</span></div>')
-            parts.append('</div>')
 
         # Subagent 统计
         if chain.subagents:

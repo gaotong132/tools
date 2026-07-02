@@ -164,7 +164,6 @@ INDEX_TEMPLATE = """
             <span><strong>{total_output_tokens:,}</strong> output tokens</span>
             <span><strong>{total_tokens:,}</strong> total tokens</span>
             <span><strong>{total_cache_tokens:,}</strong> cache tokens</span>
-            <span><strong>${total_cost:.4f}</strong> total cost</span>
         </div>
         <div class="page-tab-nav">
             <button class="page-tab-btn active" onclick="switchPageTab('sessions')">Sessions</button>
@@ -395,7 +394,7 @@ SESSION_DETAIL_TEMPLATE = """
             <div class="meta">Model: {model_name} | Iterations: {total_iterations} | {start_time} - {end_time}</div>
             <div class="meta">Duration: {session_duration} | LLM: {total_llm_duration} | Tool: {total_tool_duration} | Avg LLM: {avg_llm_per_iter}</div>
             <div class="meta">Iterations: {total_iterations_count} | Model Calls: {total_model_calls} | Tool Calls: {total_tool_calls}</div>
-            <div class="meta">Tokens: {session_input_tokens:,} input | {session_output_tokens:,} output | {session_total_tokens:,} total | {session_cache_tokens:,} cache | ${session_total_cost:.4f}</div>
+            <div class="meta">Tokens: {session_input_tokens:,} input | {session_output_tokens:,} output | {session_total_tokens:,} total | {session_cache_tokens:,} cache</div>
         </div>
         <div class="page-tab-nav">
             <button class="page-tab-btn active" onclick="switchPageTab('detail')">Detail</button>

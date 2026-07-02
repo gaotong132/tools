@@ -550,7 +550,6 @@ class ChainAnalyzer:
         # Per-session 统计
         for chain in parent_chains:
             s_tokens = sum(r.total_tokens for r in chain.responses)
-            s_cost = sum(r.total_cost for r in chain.responses)
             s_tool_calls = sum(len(r.tool_calls) for r in chain.responses if r.tool_calls)
             stats.session_stats.append({
                 "session_id": chain.session_id,
@@ -559,7 +558,6 @@ class ChainAnalyzer:
                 "llm_time": chain.total_llm_duration_seconds,
                 "tool_time": chain.total_tool_duration_seconds,
                 "tokens": s_tokens,
-                "cost": s_cost,
                 "tool_calls": s_tool_calls,
             })
 
