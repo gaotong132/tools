@@ -144,6 +144,10 @@ INDEX_TEMPLATE = """
 .stat-row .stat-val {{ color: #4a90d9; font-weight: bold; }}
 .tool-bar {{ height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin-top: 4px; }}
 .tool-bar-fill {{ height: 100%; background: #4a90d9; border-radius: 4px; transition: width 0.3s; }}
+.stat-section table {{ width: 100%; border-collapse: collapse; }}
+.stat-section th {{ background: #4a90d9; color: white; padding: 10px 12px; text-align: left; font-size: 13px; }}
+.stat-section td {{ padding: 10px 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }}
+.stat-section tr:hover {{ background: #f8f9fa; }}
 .go-top-btn {{ position: fixed; bottom: 30px; right: 30px; width: 44px; height: 44px; background: #4a90d9; color: white; border: none; border-radius: 50%; cursor: pointer; font-size: 20px; line-height: 44px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.2); opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s, background 0.2s; z-index: 1000; }}
 .go-top-btn:hover {{ background: #3a7bc8; }}
 .go-top-btn.visible {{ opacity: 1; visibility: visible; }}
@@ -374,6 +378,10 @@ SESSION_DETAIL_TEMPLATE = """
 .stat-row .stat-val {{ color: #4a90d9; font-weight: bold; }}
 .tool-bar {{ height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin-top: 4px; }}
 .tool-bar-fill {{ height: 100%; background: #4a90d9; border-radius: 4px; transition: width 0.3s; }}
+.stat-section table {{ width: 100%; border-collapse: collapse; }}
+.stat-section th {{ background: #4a90d9; color: white; padding: 10px 12px; text-align: left; font-size: 13px; }}
+.stat-section td {{ padding: 10px 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }}
+.stat-section tr:hover {{ background: #f8f9fa; }}
 /* Parallel Group (tabbed subagents) */
 .parallel-group {{ margin: 10px 0 15px 20px; border-left: 3px solid #7b1fa2; padding: 0; }}
 .parallel-header {{ padding: 8px 12px; background: #f3e5f5; border-radius: 0 4px 0 0; }}
