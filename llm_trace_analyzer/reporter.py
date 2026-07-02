@@ -1169,43 +1169,28 @@ class HTMLReporter:
             return ""
 
         sorted_timings = sorted(timings, key=lambda t: t.request_timestamp if t.request_timestamp > 0 else t.response_timestamp)
-        max_total = max(t.llm_call_duration + t.tool_processing_duration for t in sorted_timings)
-        if max_total <= 0:
-            return ""
 
         chart_height = 200
         bars: List[str] = []
         for i, t in enumerate(sorted_timings, 1):
-            llm_h = (t.llm_call_duration / max_total) * chart_height
-            tool_h = (t.tool_processing_duration / max_total) * chart_height
+            llm_ms = int(t.llm_call_duration * 1000)
+            tool_ms = int(t.tool_processing_duration * 1000)
             llm_fmt = self._format_duration(t.llm_call_duration)
             tool_fmt = self._format_duration(t.tool_processing_duration)
             total_fmt = self._format_duration(t.llm_call_duration + t.tool_processing_duration)
             bars.append(
                 f'<div class="chart-bar-col" '
-                f'data-seq="{i}" data-llm="{llm_fmt}" data-tool="{tool_fmt}" data-total="{total_fmt}" '
+                f'data-seq="{i}" data-llm-ms="{llm_ms}" data-tool-ms="{tool_ms}" '
+                f'data-llm="{llm_fmt}" data-tool="{tool_fmt}" data-total="{total_fmt}" '
                 f'onmouseenter="showChartTooltip(event, this)" '
                 f'onmousemove="moveChartTooltip(event)" '
                 f'onmouseleave="hideChartTooltip()">'
                 f'<div class="chart-bar" style="height:{chart_height}px">'
-                f'<div class="chart-bar-tool" style="height:{tool_h:.1f}px"></div>'
-                f'<div class="chart-bar-llm" style="height:{llm_h:.1f}px"></div>'
+                f'<div class="chart-bar-tool"></div>'
+                f'<div class="chart-bar-llm"></div>'
                 f'</div></div>'
             )
 
-        # Pxx 参考线（基于 LLM+Tool 总耗时）
-        all_totals = sorted(t.llm_call_duration + t.tool_processing_duration for t in sorted_timings)
-        pxx_lines: List[str] = []
-        for label, p in [("P50", 50), ("P90", 90), ("P95", 95), ("P99", 99)]:
-            val = self._percentile(all_totals, p)
-            bottom_pct = (val / max_total) * 100 if max_total > 0 else 0
-            pxx_lines.append(
-                f'<div class="chart-pxx-line" style="bottom:{bottom_pct:.1f}%">'
-                f'<span class="chart-pxx-label">{label}: {self._format_duration(val)}</span>'
-                f'</div>'
-            )
-
-        # 唯一 ID 避免多图表 JS 冲突
         chart_id = f"chart_{id(timings) % 10000}"
 
         return (
@@ -1216,7 +1201,12 @@ class HTMLReporter:
             f'<div class="chart-legend-item chart-toggle active" data-series="tool" onclick="toggleChartSeries(this)">'
             f'<div class="chart-legend-color chart-legend-tool"></div>Tool Time</div>'
             '</div>'
-            f'<div class="timing-chart">{"".join(bars)}{"".join(pxx_lines)}</div>'
+            f'<div class="timing-chart">{"".join(bars)}'
+            '<div class="chart-pxx-line chart-pxx-p50"><span class="chart-pxx-label"></span></div>'
+            '<div class="chart-pxx-line chart-pxx-p90"><span class="chart-pxx-label"></span></div>'
+            '<div class="chart-pxx-line chart-pxx-p95"><span class="chart-pxx-label"></span></div>'
+            '<div class="chart-pxx-line chart-pxx-p99"><span class="chart-pxx-label"></span></div>'
+            '</div>'
             '</div>'
         )
 

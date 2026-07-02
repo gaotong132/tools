@@ -253,13 +253,78 @@ INDEX_TEMPLATE = """
         }}
         function toggleChartSeries(el) {{
             const series = el.dataset.series;
-            const isActive = el.classList.toggle('active');
+            el.classList.toggle('active');
             const wrapper = el.closest('.timing-chart-wrapper');
             const chart = wrapper ? wrapper.querySelector('.timing-chart') : null;
             if (!chart) return;
-            chart.classList.toggle('hide-' + series, !isActive);
+            const showLlm = wrapper.querySelector('[data-series="llm"]').classList.contains('active');
+            const showTool = wrapper.querySelector('[data-series="tool"]').classList.contains('active');
+            chart.classList.toggle('hide-llm', !showLlm);
+            chart.classList.toggle('hide-tool', !showTool);
+
+            const cols = chart.querySelectorAll('.chart-bar-col');
+            const chartH = 200;
+            let maxVal = 0;
+            const vals = [];
+            cols.forEach(col => {{
+                const l = parseInt(col.dataset.llmMs) || 0;
+                const t = parseInt(col.dataset.toolMs) || 0;
+                const v = (showLlm ? l : 0) + (showTool ? t : 0);
+                vals.push({{l, t, v}});
+                if (v > maxVal) maxVal = v;
+            }});
+            if (maxVal <= 0) maxVal = 1;
+
+            cols.forEach((col, i) => {{
+                const llmBar = col.querySelector('.chart-bar-llm');
+                const toolBar = col.querySelector('.chart-bar-tool');
+                const d = vals[i];
+                llmBar.style.height = ((d.l / maxVal) * chartH) + 'px';
+                toolBar.style.height = ((d.t / maxVal) * chartH) + 'px';
+                const totalMs = d.v;
+                col.dataset.total = formatMsDuration(totalMs);
+            }});
+
+            const sorted = vals.map(v => v.v).filter(v => v > 0).sort((a, b) => a - b);
+            if (sorted.length > 0) {{
+                const pxxMap = [
+                    [50, 'p50'], [90, 'p90'], [95, 'p95'], [99, 'p99']
+                ];
+                pxxMap.forEach(([p, cls]) => {{
+                    const val = percentile(sorted, p);
+                    const pct = (val / maxVal) * 100;
+                    const line = chart.querySelector('.chart-pxx-' + cls);
+                    if (line) {{
+                        line.style.bottom = pct + '%';
+                        line.querySelector('.chart-pxx-label').textContent = cls.toUpperCase() + ': ' + formatMsDuration(val);
+                    }}
+                }});
+            }}
+        }}
+        function percentile(sorted, p) {{
+            if (!sorted.length) return 0;
+            const k = (sorted.length - 1) * p / 100;
+            const f = Math.floor(k);
+            const c = f + 1;
+            if (c >= sorted.length) return sorted[f];
+            return sorted[f] + (k - f) * (sorted[c] - sorted[f]);
+        }}
+        function formatMsDuration(ms) {{
+            const s = ms / 1000;
+            if (s <= 0) return 'N/A';
+            if (s < 1) return Math.round(ms) + 'ms';
+            if (s < 60) return s.toFixed(1) + 's';
+            const m = Math.floor(s / 60);
+            const sec = Math.round(s % 60);
+            return m + 'm ' + sec + 's';
         }}
         document.addEventListener('DOMContentLoaded', function() {{
+            // Init all timing charts
+            document.querySelectorAll('.timing-chart-wrapper').forEach(w => {{
+                const llmBtn = w.querySelector('[data-series="llm"]');
+                if (llmBtn) toggleChartSeries(llmBtn);
+                if (llmBtn) toggleChartSeries(llmBtn);
+            }});
             const btn = document.getElementById('goTopBtn');
             if (!btn) return;
             window.addEventListener('scroll', function() {{
@@ -602,11 +667,70 @@ SESSION_DETAIL_TEMPLATE = """
         }}
         function toggleChartSeries(el) {{
             const series = el.dataset.series;
-            const isActive = el.classList.toggle('active');
+            el.classList.toggle('active');
             const wrapper = el.closest('.timing-chart-wrapper');
             const chart = wrapper ? wrapper.querySelector('.timing-chart') : null;
             if (!chart) return;
-            chart.classList.toggle('hide-' + series, !isActive);
+            const showLlm = wrapper.querySelector('[data-series="llm"]').classList.contains('active');
+            const showTool = wrapper.querySelector('[data-series="tool"]').classList.contains('active');
+            chart.classList.toggle('hide-llm', !showLlm);
+            chart.classList.toggle('hide-tool', !showTool);
+
+            const cols = chart.querySelectorAll('.chart-bar-col');
+            const chartH = 200;
+            let maxVal = 0;
+            const vals = [];
+            cols.forEach(col => {{
+                const l = parseInt(col.dataset.llmMs) || 0;
+                const t = parseInt(col.dataset.toolMs) || 0;
+                const v = (showLlm ? l : 0) + (showTool ? t : 0);
+                vals.push({{l, t, v}});
+                if (v > maxVal) maxVal = v;
+            }});
+            if (maxVal <= 0) maxVal = 1;
+
+            cols.forEach((col, i) => {{
+                const llmBar = col.querySelector('.chart-bar-llm');
+                const toolBar = col.querySelector('.chart-bar-tool');
+                const d = vals[i];
+                llmBar.style.height = ((d.l / maxVal) * chartH) + 'px';
+                toolBar.style.height = ((d.t / maxVal) * chartH) + 'px';
+                const totalMs = d.v;
+                col.dataset.total = formatMsDuration(totalMs);
+            }});
+
+            const sorted = vals.map(v => v.v).filter(v => v > 0).sort((a, b) => a - b);
+            if (sorted.length > 0) {{
+                const pxxMap = [
+                    [50, 'p50'], [90, 'p90'], [95, 'p95'], [99, 'p99']
+                ];
+                pxxMap.forEach(([p, cls]) => {{
+                    const val = percentile(sorted, p);
+                    const pct = (val / maxVal) * 100;
+                    const line = chart.querySelector('.chart-pxx-' + cls);
+                    if (line) {{
+                        line.style.bottom = pct + '%';
+                        line.querySelector('.chart-pxx-label').textContent = cls.toUpperCase() + ': ' + formatMsDuration(val);
+                    }}
+                }});
+            }}
+        }}
+        function percentile(sorted, p) {{
+            if (!sorted.length) return 0;
+            const k = (sorted.length - 1) * p / 100;
+            const f = Math.floor(k);
+            const c = f + 1;
+            if (c >= sorted.length) return sorted[f];
+            return sorted[f] + (k - f) * (sorted[c] - sorted[f]);
+        }}
+        function formatMsDuration(ms) {{
+            const s = ms / 1000;
+            if (s <= 0) return 'N/A';
+            if (s < 1) return Math.round(ms) + 'ms';
+            if (s < 60) return s.toFixed(1) + 's';
+            const m = Math.floor(s / 60);
+            const sec = Math.round(s % 60);
+            return m + 'm ' + sec + 's';
         }}
         function sortTimingList(sortType, clickedBtn) {{
             const timingPanel = clickedBtn.closest('.timing-panel');
@@ -653,6 +777,12 @@ SESSION_DETAIL_TEMPLATE = """
             }});
         }}
         document.addEventListener('DOMContentLoaded', function() {{
+            // Init all timing charts
+            document.querySelectorAll('.timing-chart-wrapper').forEach(w => {{
+                const llmBtn = w.querySelector('[data-series="llm"]');
+                if (llmBtn) toggleChartSeries(llmBtn);
+                if (llmBtn) toggleChartSeries(llmBtn);
+            }});
             const btn = document.getElementById('goTopBtn');
             if (!btn) return;
             window.addEventListener('scroll', function() {{
