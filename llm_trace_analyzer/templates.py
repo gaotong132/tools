@@ -231,8 +231,9 @@ INDEX_TEMPLATE = """
                 </tr>
                 {session_rows}
             </table>
-            <div class="compare-panel" id="comparePanel" style="display:none">
-                <h3 style="margin:20px 0 10px;color:#1a1a2e">Session Comparison <span style="font-size:12px;color:#999;font-weight:normal">(click a column header to set as baseline)</span></h3>
+            <div class="compare-panel" id="comparePanel">
+                <h3 style="margin:0 0 10px;color:#1a1a2e">Session Comparison <span style="font-size:12px;color:#999;font-weight:normal">(select sessions above, click a column header to set as baseline)</span></h3>
+                <div class="compare-hint" id="compareHint" style="color:#999;font-size:14px;padding:20px 0;text-align:center">Select at least 2 sessions using the checkboxes above to compare</div>
                 <div class="compare-table-wrapper">
                     <table class="compare-table" id="compareTable"></table>
                 </div>
@@ -283,13 +284,15 @@ INDEX_TEMPLATE = """
         }}
 
         function renderComparison() {{
-            const panel = document.getElementById('comparePanel');
+            const hint = document.getElementById('compareHint');
             const table = document.getElementById('compareTable');
             if (selectedSessions.length < 2) {{
-                panel.style.display = 'none';
+                hint.style.display = 'block';
+                table.style.display = 'none';
                 return;
             }}
-            panel.style.display = 'block';
+            hint.style.display = 'none';
+            table.style.display = '';
             if (!baselineSessionId || !selectedSessions.includes(baselineSessionId)) {{
                 baselineSessionId = selectedSessions[0];
             }}
