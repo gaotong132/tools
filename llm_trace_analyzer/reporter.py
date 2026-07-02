@@ -1163,6 +1163,48 @@ class HTMLReporter:
             return sorted_values[f]
         return sorted_values[f] + (k - f) * (sorted_values[c] - sorted_values[f])
 
+    def _render_timing_chart(self, timings: List[IterationTiming]) -> str:
+        """渲染时间分布堆叠柱状图"""
+        if not timings:
+            return ""
+
+        sorted_timings = sorted(timings, key=lambda t: t.request_timestamp if t.request_timestamp > 0 else t.response_timestamp)
+        max_total = max(t.llm_call_duration + t.tool_processing_duration for t in sorted_timings)
+        if max_total <= 0:
+            return ""
+
+        chart_height = 200
+        bars: List[str] = []
+        for i, t in enumerate(sorted_timings, 1):
+            llm_h = (t.llm_call_duration / max_total) * chart_height
+            tool_h = (t.tool_processing_duration / max_total) * chart_height
+            llm_fmt = self._format_duration(t.llm_call_duration)
+            tool_fmt = self._format_duration(t.tool_processing_duration)
+            total_fmt = self._format_duration(t.llm_call_duration + t.tool_processing_duration)
+            show_label = len(sorted_timings) <= 50 or i % max(1, len(sorted_timings) // 20) == 1
+            x_label = f'<div class="chart-x-label">{i}</div>' if show_label else '<div class="chart-x-label"></div>'
+            bars.append(
+                f'<div class="chart-bar-col" '
+                f'data-seq="{i}" data-llm="{llm_fmt}" data-tool="{tool_fmt}" data-total="{total_fmt}" '
+                f'onmouseenter="showChartTooltip(event, this)" '
+                f'onmousemove="moveChartTooltip(event)" '
+                f'onmouseleave="hideChartTooltip()">'
+                f'<div class="chart-bar" style="height:{chart_height}px">'
+                f'<div class="chart-bar-tool" style="height:{tool_h:.1f}px"></div>'
+                f'<div class="chart-bar-llm" style="height:{llm_h:.1f}px"></div>'
+                f'</div>{x_label}</div>'
+            )
+
+        return (
+            '<div class="timing-chart-wrapper">'
+            '<div class="chart-legend">'
+            '<div class="chart-legend-item"><div class="chart-legend-color chart-legend-llm"></div>LLM Time</div>'
+            '<div class="chart-legend-item"><div class="chart-legend-color chart-legend-tool"></div>Tool Time</div>'
+            '</div>'
+            f'<div class="timing-chart">{"".join(bars)}</div>'
+            '</div>'
+        )
+
     def _compute_per_tool_stats(self, chains: List[LLMChain]) -> Dict[str, Dict]:
         """计算每个工具的调用次数、总耗时、平均耗时。
 
@@ -1227,6 +1269,17 @@ class HTMLReporter:
         for val, label in overview:
             parts.append(f'<div class="stat-card"><div class="stat-value">{val}</div><div class="stat-label">{label}</div></div>')
         parts.append('</div>')
+
+        # 时间分布图
+        all_timings = []
+        for chain in result.sorted_sessions:
+            all_timings.extend(chain.iteration_timings)
+        chart_html = self._render_timing_chart(all_timings)
+        if chart_html:
+            parts.append('<div class="stat-section">')
+            parts.append("<h3>Timing Distribution</h3>")
+            parts.append(chart_html)
+            parts.append('</div>')
 
         # 工具调用统计
         per_tool = self._compute_per_tool_stats(result.sorted_sessions)
@@ -1381,6 +1434,14 @@ class HTMLReporter:
         for val, label in overview:
             parts.append(f'<div class="stat-card"><div class="stat-value">{val}</div><div class="stat-label">{label}</div></div>')
         parts.append('</div>')
+
+        # 时间分布图
+        chart_html = self._render_timing_chart(chain.iteration_timings)
+        if chart_html:
+            parts.append('<div class="stat-section">')
+            parts.append("<h3>Timing Distribution</h3>")
+            parts.append(chart_html)
+            parts.append('</div>')
 
         # 工具调用统计
         per_tool = self._compute_per_tool_stats([chain])

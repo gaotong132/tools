@@ -148,6 +148,26 @@ INDEX_TEMPLATE = """
 .stat-section th {{ background: #4a90d9; color: white; padding: 10px 12px; text-align: left; font-size: 13px; }}
 .stat-section td {{ padding: 10px 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }}
 .stat-section tr:hover {{ background: #f8f9fa; }}
+/* Timing Chart */
+.timing-chart-wrapper {{ margin-bottom: 10px; }}
+.chart-legend {{ display: flex; gap: 16px; margin-bottom: 8px; font-size: 12px; color: #666; }}
+.chart-legend-item {{ display: flex; align-items: center; gap: 4px; }}
+.chart-legend-color {{ width: 12px; height: 12px; border-radius: 2px; }}
+.chart-legend-llm {{ background: #4a90d9; }}
+.chart-legend-tool {{ background: #f57c00; }}
+.timing-chart {{ display: flex; align-items: flex-end; gap: 2px; height: 200px; padding: 0 4px; overflow-x: auto; border-bottom: 1px solid #e0e0e0; position: relative; }}
+.chart-bar-col {{ display: flex; flex-direction: column; align-items: center; min-width: 12px; flex: 1; max-width: 30px; cursor: pointer; }}
+.chart-bar {{ display: flex; flex-direction: column; width: 100%; justify-content: flex-end; }}
+.chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
+.chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
+.chart-bar-col:hover .chart-bar-llm, .chart-bar-col:hover .chart-bar-tool {{ opacity: 0.8; }}
+.chart-x-label {{ font-size: 9px; color: #999; margin-top: 2px; }}
+.chart-tooltip {{ position: fixed; pointer-events: none; background: #1a1a2e; color: white; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.8; z-index: 2000; box-shadow: 0 4px 16px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.15s; }}
+.chart-tooltip.visible {{ opacity: 1; }}
+.chart-tooltip .tt-name {{ font-weight: bold; color: #82b1ff; margin-bottom: 2px; }}
+.chart-tooltip .tt-row {{ display: flex; justify-content: space-between; gap: 16px; }}
+.chart-tooltip .tt-label {{ color: #aaa; }}
+.chart-tooltip .tt-value {{ font-weight: bold; }}
 .go-top-btn {{ position: fixed; bottom: 30px; right: 30px; width: 44px; height: 44px; background: #4a90d9; color: white; border: none; border-radius: 50%; cursor: pointer; font-size: 20px; line-height: 44px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.2); opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s, background 0.2s; z-index: 1000; }}
 .go-top-btn:hover {{ background: #3a7bc8; }}
 .go-top-btn.visible {{ opacity: 1; visibility: visible; }}
@@ -198,6 +218,31 @@ INDEX_TEMPLATE = """
                 panel.classList.toggle('active', panel.id === 'tab-' + tabId);
             }});
         }}
+        function showChartTooltip(event, el) {{
+            const tt = document.getElementById('chartTooltip');
+            if (!tt) return;
+            const seq = el.dataset.seq;
+            const llm = el.dataset.llm;
+            const tool = el.dataset.tool;
+            const total = el.dataset.total;
+            tt.innerHTML = `
+                <div class="tt-name">#${{seq}}</div>
+                <div class="tt-row"><span class="tt-label">LLM Time</span><span class="tt-value">${{llm}}</span></div>
+                <div class="tt-row"><span class="tt-label">Tool Time</span><span class="tt-value">${{tool}}</span></div>
+                <div class="tt-row"><span class="tt-label">Total</span><span class="tt-value">${{total}}</span></div>
+            `;
+            tt.style.left = (event.clientX + 12) + 'px';
+            tt.style.top = (event.clientY - 10) + 'px';
+            tt.classList.add('visible');
+        }}
+        function moveChartTooltip(event) {{
+            const tt = document.getElementById('chartTooltip');
+            if (tt) {{ tt.style.left = (event.clientX + 12) + 'px'; tt.style.top = (event.clientY - 10) + 'px'; }}
+        }}
+        function hideChartTooltip() {{
+            const tt = document.getElementById('chartTooltip');
+            if (tt) tt.classList.remove('visible');
+        }}
         document.addEventListener('DOMContentLoaded', function() {{
             const btn = document.getElementById('goTopBtn');
             if (!btn) return;
@@ -214,6 +259,7 @@ INDEX_TEMPLATE = """
         }});
     </script>
     <button id="goTopBtn" class="go-top-btn" title="Go to Top">&#8593;</button>
+    <div id="chartTooltip" class="chart-tooltip"></div>
 </body>
 </html>
 """
@@ -382,6 +428,26 @@ SESSION_DETAIL_TEMPLATE = """
 .stat-section th {{ background: #4a90d9; color: white; padding: 10px 12px; text-align: left; font-size: 13px; }}
 .stat-section td {{ padding: 10px 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }}
 .stat-section tr:hover {{ background: #f8f9fa; }}
+/* Timing Chart */
+.timing-chart-wrapper {{ margin-bottom: 10px; }}
+.chart-legend {{ display: flex; gap: 16px; margin-bottom: 8px; font-size: 12px; color: #666; }}
+.chart-legend-item {{ display: flex; align-items: center; gap: 4px; }}
+.chart-legend-color {{ width: 12px; height: 12px; border-radius: 2px; }}
+.chart-legend-llm {{ background: #4a90d9; }}
+.chart-legend-tool {{ background: #f57c00; }}
+.timing-chart {{ display: flex; align-items: flex-end; gap: 2px; height: 200px; padding: 0 4px; overflow-x: auto; border-bottom: 1px solid #e0e0e0; position: relative; }}
+.chart-bar-col {{ display: flex; flex-direction: column; align-items: center; min-width: 12px; flex: 1; max-width: 30px; cursor: pointer; }}
+.chart-bar {{ display: flex; flex-direction: column; width: 100%; justify-content: flex-end; }}
+.chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
+.chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
+.chart-bar-col:hover .chart-bar-llm, .chart-bar-col:hover .chart-bar-tool {{ opacity: 0.8; }}
+.chart-x-label {{ font-size: 9px; color: #999; margin-top: 2px; }}
+.chart-tooltip {{ position: fixed; pointer-events: none; background: #1a1a2e; color: white; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.8; z-index: 2000; box-shadow: 0 4px 16px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.15s; }}
+.chart-tooltip.visible {{ opacity: 1; }}
+.chart-tooltip .tt-name {{ font-weight: bold; color: #82b1ff; margin-bottom: 2px; }}
+.chart-tooltip .tt-row {{ display: flex; justify-content: space-between; gap: 16px; }}
+.chart-tooltip .tt-label {{ color: #aaa; }}
+.chart-tooltip .tt-value {{ font-weight: bold; }}
 /* Parallel Group (tabbed subagents) */
 .parallel-group {{ margin: 10px 0 15px 20px; border-left: 3px solid #7b1fa2; padding: 0; }}
 .parallel-header {{ padding: 8px 12px; background: #f3e5f5; border-radius: 0 4px 0 0; }}
@@ -484,6 +550,31 @@ SESSION_DETAIL_TEMPLATE = """
             document.querySelectorAll('.page-tab-panel').forEach(panel => {{
                 panel.classList.toggle('active', panel.id === 'tab-' + tabId);
             }});
+        }}
+        function showChartTooltip(event, el) {{
+            const tt = document.getElementById('chartTooltip');
+            if (!tt) return;
+            const seq = el.dataset.seq;
+            const llm = el.dataset.llm;
+            const tool = el.dataset.tool;
+            const total = el.dataset.total;
+            tt.innerHTML = `
+                <div class="tt-name">#${{seq}}</div>
+                <div class="tt-row"><span class="tt-label">LLM Time</span><span class="tt-value">${{llm}}</span></div>
+                <div class="tt-row"><span class="tt-label">Tool Time</span><span class="tt-value">${{tool}}</span></div>
+                <div class="tt-row"><span class="tt-label">Total</span><span class="tt-value">${{total}}</span></div>
+            `;
+            tt.style.left = (event.clientX + 12) + 'px';
+            tt.style.top = (event.clientY - 10) + 'px';
+            tt.classList.add('visible');
+        }}
+        function moveChartTooltip(event) {{
+            const tt = document.getElementById('chartTooltip');
+            if (tt) {{ tt.style.left = (event.clientX + 12) + 'px'; tt.style.top = (event.clientY - 10) + 'px'; }}
+        }}
+        function hideChartTooltip() {{
+            const tt = document.getElementById('chartTooltip');
+            if (tt) tt.classList.remove('visible');
         }}
         function sortTimingList(sortType, clickedBtn) {{
             const timingPanel = clickedBtn.closest('.timing-panel');
@@ -640,6 +731,7 @@ SESSION_DETAIL_TEMPLATE = """
     </script>
     <button id="goTopBtn" class="go-top-btn" title="Go to Top">&#8593;</button>
     <div id="ganttTooltip" class="gantt-tooltip"></div>
+    <div id="chartTooltip" class="chart-tooltip"></div>
 </body>
 </html>
 """
