@@ -321,12 +321,16 @@ INDEX_TEMPLATE = """
             const base = statsMap[baselineSessionId];
 
             const metrics = [
-                ['Model', 'model', false],
-                ['Iterations', 'iterations', false],
-                ['LLM Time', 'llm_time', true],
-                ['Tool Time', 'tool_time', true],
-                ['Tokens', 'tokens', false],
-                ['Tool Calls', 'tool_calls', false],
+                ['Model', 'model', 'string'],
+                ['Iterations', 'iterations', 'number'],
+                ['LLM Time', 'llm_time', 'time'],
+                ['Avg LLM', 'avg_llm_time', 'time'],
+                ['Tool Time', 'tool_time', 'time'],
+                ['Avg Tool', 'avg_tool_time', 'time'],
+                ['Tokens', 'tokens', 'number'],
+                ['Cache Tokens', 'cache_tokens', 'number'],
+                ['Tokens/sec', 'tokens_per_sec', 'rate'],
+                ['Tool Calls', 'tool_calls', 'number'],
             ];
 
             let html = '<tr><th>Metric</th>';
@@ -337,18 +341,28 @@ INDEX_TEMPLATE = """
             }});
             html += '</tr>';
 
-            metrics.forEach(([label, key, isTime]) => {{
+            metrics.forEach(([label, key, type]) => {{
                 html += `<tr><td><strong>${{label}}</strong></td>`;
                 selectedSessions.forEach(sid => {{
                     const s = statsMap[sid];
                     if (!s) {{ html += '<td>N/A</td>'; return; }}
                     const val = s[key];
                     let cell;
-                    if (key === 'model') {{
+                    if (type === 'string') {{
                         cell = val;
-                    }} else if (isTime) {{
+                    }} else if (type === 'time') {{
                         cell = fmtDur(val);
                         if (sid !== baselineSessionId) cell += ' ' + deltaHtml(val, base[key], true);
+                    }} else if (type === 'rate') {{
+                        cell = val.toFixed(1) + ' tok/s';
+                        if (sid !== baselineSessionId) {{
+                            const diff = val - base[key];
+                            if (diff !== 0) {{
+                                const sign = diff > 0 ? '+' : '';
+                                const cls = diff > 0 ? 'delta-pos' : 'delta-neg';
+                                cell += ` <span class="${{cls}}">(${{sign}}${{diff.toFixed(1)}})</span>`;
+                            }}
+                        }}
                     }} else {{
                         cell = typeof val === 'number' ? val.toLocaleString() : val;
                         if (sid !== baselineSessionId && typeof val === 'number') {{
