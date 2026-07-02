@@ -1164,7 +1164,7 @@ class HTMLReporter:
         return sorted_values[f] + (k - f) * (sorted_values[c] - sorted_values[f])
 
     def _render_timing_chart(self, timings: List[IterationTiming]) -> str:
-        """渲染时间分布堆叠柱状图"""
+        """渲染时间分布堆叠柱状图（含 LLM/Tool 切换和 Pxx 参考线）"""
         if not timings:
             return ""
 
@@ -1193,13 +1193,30 @@ class HTMLReporter:
                 f'</div></div>'
             )
 
+        # Pxx 参考线（基于 LLM+Tool 总耗时）
+        all_totals = sorted(t.llm_call_duration + t.tool_processing_duration for t in sorted_timings)
+        pxx_lines: List[str] = []
+        for label, p in [("P50", 50), ("P90", 90), ("P95", 95), ("P99", 99)]:
+            val = self._percentile(all_totals, p)
+            bottom_pct = (val / max_total) * 100 if max_total > 0 else 0
+            pxx_lines.append(
+                f'<div class="chart-pxx-line" style="bottom:{bottom_pct:.1f}%">'
+                f'<span class="chart-pxx-label">{label}: {self._format_duration(val)}</span>'
+                f'</div>'
+            )
+
+        # 唯一 ID 避免多图表 JS 冲突
+        chart_id = f"chart_{id(timings) % 10000}"
+
         return (
-            '<div class="timing-chart-wrapper">'
+            f'<div class="timing-chart-wrapper" id="{chart_id}">'
             '<div class="chart-legend">'
-            '<div class="chart-legend-item"><div class="chart-legend-color chart-legend-llm"></div>LLM Time</div>'
-            '<div class="chart-legend-item"><div class="chart-legend-color chart-legend-tool"></div>Tool Time</div>'
+            f'<div class="chart-legend-item chart-toggle active" data-series="llm" onclick="toggleChartSeries(this)">'
+            f'<div class="chart-legend-color chart-legend-llm"></div>LLM Time</div>'
+            f'<div class="chart-legend-item chart-toggle active" data-series="tool" onclick="toggleChartSeries(this)">'
+            f'<div class="chart-legend-color chart-legend-tool"></div>Tool Time</div>'
             '</div>'
-            f'<div class="timing-chart">{"".join(bars)}</div>'
+            f'<div class="timing-chart">{"".join(bars)}{"".join(pxx_lines)}</div>'
             '</div>'
         )
 

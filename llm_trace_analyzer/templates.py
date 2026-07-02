@@ -155,12 +155,20 @@ INDEX_TEMPLATE = """
 .chart-legend-color {{ width: 12px; height: 12px; border-radius: 2px; }}
 .chart-legend-llm {{ background: #4a90d9; }}
 .chart-legend-tool {{ background: #f57c00; }}
+.chart-toggle {{ cursor: pointer; padding: 2px 8px; border-radius: 4px; border: 1px solid transparent; transition: all 0.2s; user-select: none; }}
+.chart-toggle:hover {{ background: #f0f0f0; }}
+.chart-toggle.active {{ border-color: #ccc; }}
+.chart-toggle:not(.active) {{ opacity: 0.4; }}
 .timing-chart {{ display: flex; align-items: flex-end; gap: 2px; height: 200px; padding: 0 4px; border-bottom: 1px solid #e0e0e0; position: relative; }}
 .chart-bar-col {{ display: flex; flex-direction: column; align-items: center; flex: 1; cursor: pointer; }}
 .chart-bar {{ display: flex; flex-direction: column; width: 100%; justify-content: flex-end; }}
-.chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
-.chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
+.chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
+.chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
 .chart-bar-col:hover .chart-bar-llm, .chart-bar-col:hover .chart-bar-tool {{ opacity: 0.8; }}
+.timing-chart.hide-llm .chart-bar-llm {{ height: 0 !important; min-height: 0 !important; }}
+.timing-chart.hide-tool .chart-bar-tool {{ height: 0 !important; min-height: 0 !important; }}
+.chart-pxx-line {{ position: absolute; left: 0; right: 0; border-top: 1px dashed #999; pointer-events: none; z-index: 1; }}
+.chart-pxx-label {{ position: absolute; right: 4px; top: -14px; font-size: 10px; color: #666; background: rgba(255,255,255,0.85); padding: 0 4px; border-radius: 2px; white-space: nowrap; }}
 .chart-x-label {{ font-size: 9px; color: #999; margin-top: 2px; }}
 .chart-tooltip {{ position: fixed; pointer-events: none; background: #1a1a2e; color: white; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.8; z-index: 2000; box-shadow: 0 4px 16px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.15s; }}
 .chart-tooltip.visible {{ opacity: 1; }}
@@ -242,6 +250,14 @@ INDEX_TEMPLATE = """
         function hideChartTooltip() {{
             const tt = document.getElementById('chartTooltip');
             if (tt) tt.classList.remove('visible');
+        }}
+        function toggleChartSeries(el) {{
+            const series = el.dataset.series;
+            const isActive = el.classList.toggle('active');
+            const wrapper = el.closest('.timing-chart-wrapper');
+            const chart = wrapper ? wrapper.querySelector('.timing-chart') : null;
+            if (!chart) return;
+            chart.classList.toggle('hide-' + series, !isActive);
         }}
         document.addEventListener('DOMContentLoaded', function() {{
             const btn = document.getElementById('goTopBtn');
@@ -435,12 +451,20 @@ SESSION_DETAIL_TEMPLATE = """
 .chart-legend-color {{ width: 12px; height: 12px; border-radius: 2px; }}
 .chart-legend-llm {{ background: #4a90d9; }}
 .chart-legend-tool {{ background: #f57c00; }}
+.chart-toggle {{ cursor: pointer; padding: 2px 8px; border-radius: 4px; border: 1px solid transparent; transition: all 0.2s; user-select: none; }}
+.chart-toggle:hover {{ background: #f0f0f0; }}
+.chart-toggle.active {{ border-color: #ccc; }}
+.chart-toggle:not(.active) {{ opacity: 0.4; }}
 .timing-chart {{ display: flex; align-items: flex-end; gap: 2px; height: 200px; padding: 0 4px; border-bottom: 1px solid #e0e0e0; position: relative; }}
 .chart-bar-col {{ display: flex; flex-direction: column; align-items: center; flex: 1; cursor: pointer; }}
 .chart-bar {{ display: flex; flex-direction: column; width: 100%; justify-content: flex-end; }}
-.chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
-.chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s; }}
+.chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
+.chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
 .chart-bar-col:hover .chart-bar-llm, .chart-bar-col:hover .chart-bar-tool {{ opacity: 0.8; }}
+.timing-chart.hide-llm .chart-bar-llm {{ height: 0 !important; min-height: 0 !important; }}
+.timing-chart.hide-tool .chart-bar-tool {{ height: 0 !important; min-height: 0 !important; }}
+.chart-pxx-line {{ position: absolute; left: 0; right: 0; border-top: 1px dashed #999; pointer-events: none; z-index: 1; }}
+.chart-pxx-label {{ position: absolute; right: 4px; top: -14px; font-size: 10px; color: #666; background: rgba(255,255,255,0.85); padding: 0 4px; border-radius: 2px; white-space: nowrap; }}
 .chart-x-label {{ font-size: 9px; color: #999; margin-top: 2px; }}
 .chart-tooltip {{ position: fixed; pointer-events: none; background: #1a1a2e; color: white; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.8; z-index: 2000; box-shadow: 0 4px 16px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.15s; }}
 .chart-tooltip.visible {{ opacity: 1; }}
@@ -575,6 +599,14 @@ SESSION_DETAIL_TEMPLATE = """
         function hideChartTooltip() {{
             const tt = document.getElementById('chartTooltip');
             if (tt) tt.classList.remove('visible');
+        }}
+        function toggleChartSeries(el) {{
+            const series = el.dataset.series;
+            const isActive = el.classList.toggle('active');
+            const wrapper = el.closest('.timing-chart-wrapper');
+            const chart = wrapper ? wrapper.querySelector('.timing-chart') : null;
+            if (!chart) return;
+            chart.classList.toggle('hide-' + series, !isActive);
         }}
         function sortTimingList(sortType, clickedBtn) {{
             const timingPanel = clickedBtn.closest('.timing-panel');
