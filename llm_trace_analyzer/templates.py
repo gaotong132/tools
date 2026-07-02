@@ -548,14 +548,14 @@ SESSION_DETAIL_TEMPLATE = """
             const totalTokens = bar.dataset.totalTokens || '0';
             const cacheTokens = bar.dataset.cacheTokens || '0';
             const charsHtml = `
-                <div class="tt-row"><span class="tt-label">Reasoning</span><span class="tt-value">${{reasoningChars}} chars</span></div>
-                <div class="tt-row"><span class="tt-label">Content</span><span class="tt-value">${{contentChars}} chars</span></div>
-                <div class="tt-row"><span class="tt-label">Tool Calls</span><span class="tt-value">${{toolCallsChars}} chars</span></div>
+                <div class="tt-row"><span class="tt-label">Reasoning Chars</span><span class="tt-value">${{Number(reasoningChars).toLocaleString()}}</span></div>
+                <div class="tt-row"><span class="tt-label">Content Chars</span><span class="tt-value">${{Number(contentChars).toLocaleString()}}</span></div>
+                <div class="tt-row"><span class="tt-label">Tool Calls Chars</span><span class="tt-value">${{Number(toolCallsChars).toLocaleString()}}</span></div>
             `;
             const tokensHtml = `
-                <div class="tt-row"><span class="tt-label">Input</span><span class="tt-value">${{Number(inputTokens).toLocaleString()}}</span></div>
-                <div class="tt-row"><span class="tt-label">Output</span><span class="tt-value">${{Number(outputTokens).toLocaleString()}}</span></div>
-                <div class="tt-row"><span class="tt-label">Cache</span><span class="tt-value">${{Number(cacheTokens).toLocaleString()}}</span></div>
+                <div class="tt-row"><span class="tt-label">Input Tokens</span><span class="tt-value">${{Number(inputTokens).toLocaleString()}}</span></div>
+                <div class="tt-row"><span class="tt-label">Output Tokens</span><span class="tt-value">${{Number(outputTokens).toLocaleString()}}</span></div>
+                <div class="tt-row"><span class="tt-label">Cache Tokens</span><span class="tt-value">${{Number(cacheTokens).toLocaleString()}}</span></div>
                 <div class="tt-row"><span class="tt-label">Total Tokens</span><span class="tt-value">${{Number(totalTokens).toLocaleString()}}</span></div>
             `;
 
@@ -573,10 +573,10 @@ SESSION_DETAIL_TEMPLATE = """
                 tt.innerHTML = `
                     <div class="tt-name">${{name}}</div>
                     <div class="tt-bar"><div class="tt-bar-llm" style="width:${{llmPct}}%"></div><div class="tt-bar-tool" style="width:${{toolPct}}%"></div></div>
-                    <div class="tt-row"><span class="tt-label">LLM</span><span class="tt-value">${{llm}}</span></div>
-                    <div class="tt-row"><span class="tt-label">Tool</span><span class="tt-value">${{tool}}</span></div>
-                    <div class="tt-row"><span class="tt-label">Total</span><span class="tt-value">${{total}}</span></div>
-                    <div class="tt-row"><span class="tt-label">Time</span><span class="tt-value">${{timeRange}}</span></div>
+                    <div class="tt-row"><span class="tt-label">LLM Time</span><span class="tt-value">${{llm}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Tool Time</span><span class="tt-value">${{tool}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Total Time</span><span class="tt-value">${{total}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Time Range</span><span class="tt-value">${{timeRange}}</span></div>
                     ${{charsHtml}}
                     ${{tokensHtml}}
                     ${{tcHtml}}
@@ -595,10 +595,10 @@ SESSION_DETAIL_TEMPLATE = """
                     <div class="tt-name">${{name}}</div>
                     <div class="tt-row"><span class="tt-label">Iterations</span><span class="tt-value">${{iters}}</span></div>
                     <div class="tt-bar"><div class="tt-bar-llm" style="width:${{llmPct}}%"></div><div class="tt-bar-tool" style="width:${{toolPct}}%"></div></div>
-                    <div class="tt-row"><span class="tt-label">LLM</span><span class="tt-value">${{llm}}</span></div>
-                    <div class="tt-row"><span class="tt-label">Tool</span><span class="tt-value">${{tool}}</span></div>
-                    <div class="tt-row"><span class="tt-label">Total</span><span class="tt-value">${{total}}</span></div>
-                    <div class="tt-row"><span class="tt-label">Time</span><span class="tt-value">${{timeRange}}</span></div>
+                    <div class="tt-row"><span class="tt-label">LLM Time</span><span class="tt-value">${{llm}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Tool Time</span><span class="tt-value">${{tool}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Total Time</span><span class="tt-value">${{total}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Time Range</span><span class="tt-value">${{timeRange}}</span></div>
                     ${{charsHtml}}
                     ${{tokensHtml}}
                 `;
