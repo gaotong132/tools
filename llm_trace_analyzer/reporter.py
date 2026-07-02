@@ -1151,6 +1151,64 @@ class HTMLReporter:
             )
         return JSON_BLOCK_TEMPLATE.format(content_id=content_id, content=escaped_content)
 
+    @staticmethod
+    def _percentile(sorted_values: List[float], p: float) -> float:
+        """计算百分位数 (0-100)"""
+        if not sorted_values:
+            return 0.0
+        k = (len(sorted_values) - 1) * p / 100
+        f = int(k)
+        c = f + 1
+        if c >= len(sorted_values):
+            return sorted_values[f]
+        return sorted_values[f] + (k - f) * (sorted_values[c] - sorted_values[f])
+
+    def _compute_per_tool_stats(self, chains: List[LLMChain]) -> Dict[str, Dict]:
+        """计算每个工具的调用次数、总耗时、平均耗时。
+
+        将每次迭代的 tool_processing_duration 均分给该迭代的所有工具调用。
+        """
+        per_tool: Dict[str, Dict] = {}
+        for chain in chains:
+            timing_map = {t.iteration_num: t.tool_processing_duration for t in chain.iteration_timings}
+            for resp in chain.responses:
+                if not resp.tool_calls:
+                    continue
+                n = len(resp.tool_calls)
+                duration = timing_map.get(resp.iteration, 0)
+                per_call = duration / n if n > 0 else 0
+                for tc in resp.tool_calls:
+                    name = tc.get("name") or tc.get("function", {}).get("name", "unknown")
+                    if name not in per_tool:
+                        per_tool[name] = {"count": 0, "total_time": 0.0}
+                    per_tool[name]["count"] += 1
+                    per_tool[name]["total_time"] += per_call
+        for v in per_tool.values():
+            v["avg_time"] = v["total_time"] / v["count"] if v["count"] > 0 else 0
+        return dict(sorted(per_tool.items(), key=lambda x: -x[1]["count"]))
+
+    def _render_tool_calls_table(self, per_tool: Dict[str, Dict]) -> str:
+        """渲染工具调用表格 HTML"""
+        if not per_tool:
+            return ""
+        total_calls = sum(v["count"] for v in per_tool.values())
+        max_count = max(v["count"] for v in per_tool.values())
+        parts = ['<table><tr><th>Tool</th><th>Calls</th><th>Total Time</th><th>Avg Time</th></tr>']
+        for name, s in per_tool.items():
+            pct = s["count"] / total_calls * 100 if total_calls > 0 else 0
+            bar_w = s["count"] / max_count * 100 if max_count > 0 else 0
+            parts.append(
+                f'<tr>'
+                f'<td>{html.escape(name)}</td>'
+                f'<td>{s["count"]} ({pct:.1f}%)'
+                f'<div class="tool-bar"><div class="tool-bar-fill" style="width:{bar_w:.0f}%"></div></div></td>'
+                f'<td>{self._format_duration(s["total_time"])}</td>'
+                f'<td>{self._format_duration(s["avg_time"])}</td>'
+                f'</tr>'
+            )
+        parts.append('</table>')
+        return "\n".join(parts)
+
     def _generate_global_statistics_html(self, result: AnalysisResult) -> str:
         """生成 index 页面的统计面板 HTML"""
         stats = result.statistics
@@ -1170,38 +1228,30 @@ class HTMLReporter:
         parts.append('</div>')
 
         # 工具调用统计
-        if stats.tool_call_counts:
-            max_count = max(stats.tool_call_counts.values())
+        per_tool = self._compute_per_tool_stats(result.sorted_sessions)
+        if per_tool:
             parts.append('<div class="stat-section">')
             parts.append("<h3>Tool Calls</h3>")
-            avg_tool_per_call = stats.total_tool_time_seconds / stats.total_tool_calls if stats.total_tool_calls > 0 else 0
-            summary_rows = [
-                ("Total Time", self._format_duration(stats.total_tool_time_seconds)),
-                ("Avg Time", self._format_duration(avg_tool_per_call)),
-                ("Total Calls", f"{stats.total_tool_calls}"),
-            ]
-            for name, val in summary_rows:
-                parts.append(f'<div class="stat-row"><span class="stat-name">{name}</span><span class="stat-val">{val}</span></div>')
-            for name, count in stats.tool_call_counts.items():
-                pct = count / stats.total_tool_calls * 100 if stats.total_tool_calls > 0 else 0
-                bar_w = count / max_count * 100 if max_count > 0 else 0
-                parts.append(
-                    f'<div class="stat-row">'
-                    f'<span class="stat-name">{html.escape(name)}</span>'
-                    f'<span class="stat-val">{count} ({pct:.1f}%)</span>'
-                    f'</div>'
-                    f'<div class="tool-bar"><div class="tool-bar-fill" style="width:{bar_w:.0f}%"></div></div>'
-                )
+            parts.append(self._render_tool_calls_table(per_tool))
             parts.append('</div>')
 
         # LLM 调用统计
         parts.append('<div class="stat-section">')
         parts.append("<h3>LLM Calls</h3>")
         avg_llm_per_call = stats.total_llm_time_seconds / stats.total_iterations if stats.total_iterations > 0 else 0
+        # 收集所有 LLM 耗时并排序
+        all_llm_durations = sorted(
+            t.llm_call_duration for chain in result.sorted_sessions
+            for t in chain.iteration_timings if t.llm_call_duration > 0
+        )
         llm_rows = [
             ("Total Time", self._format_duration(stats.total_llm_time_seconds)),
             ("Avg Time", self._format_duration(avg_llm_per_call)),
             ("Total Calls", f"{stats.total_iterations}"),
+            ("P50", self._format_duration(self._percentile(all_llm_durations, 50))),
+            ("P90", self._format_duration(self._percentile(all_llm_durations, 90))),
+            ("P95", self._format_duration(self._percentile(all_llm_durations, 95))),
+            ("P99", self._format_duration(self._percentile(all_llm_durations, 99))),
         ]
         for name, val in llm_rows:
             parts.append(f'<div class="stat-row"><span class="stat-name">{name}</span><span class="stat-val">{val}</span></div>')
@@ -1332,38 +1382,28 @@ class HTMLReporter:
         parts.append('</div>')
 
         # 工具调用统计
-        if tool_counts_sorted:
-            max_count = max(tool_counts_sorted.values())
+        per_tool = self._compute_per_tool_stats([chain])
+        if per_tool:
             parts.append('<div class="stat-section">')
             parts.append("<h3>Tool Calls</h3>")
-            avg_tool_per_call = chain.total_tool_duration_seconds / total_tool_calls if total_tool_calls > 0 else 0
-            summary_rows = [
-                ("Total Time", self._format_duration(chain.total_tool_duration_seconds)),
-                ("Avg Time", self._format_duration(avg_tool_per_call)),
-                ("Total Calls", f"{total_tool_calls}"),
-            ]
-            for name, val in summary_rows:
-                parts.append(f'<div class="stat-row"><span class="stat-name">{name}</span><span class="stat-val">{val}</span></div>')
-            for name, count in tool_counts_sorted.items():
-                pct = count / total_tool_calls * 100 if total_tool_calls > 0 else 0
-                bar_w = count / max_count * 100 if max_count > 0 else 0
-                parts.append(
-                    f'<div class="stat-row">'
-                    f'<span class="stat-name">{html.escape(name)}</span>'
-                    f'<span class="stat-val">{count} ({pct:.1f}%)</span>'
-                    f'</div>'
-                    f'<div class="tool-bar"><div class="tool-bar-fill" style="width:{bar_w:.0f}%"></div></div>'
-                )
+            parts.append(self._render_tool_calls_table(per_tool))
             parts.append('</div>')
 
         # LLM 调用统计
         parts.append('<div class="stat-section">')
         parts.append("<h3>LLM Calls</h3>")
         avg_llm_per_call = chain.total_llm_duration_seconds / num_iters if num_iters > 0 else 0
+        session_llm_durations = sorted(
+            t.llm_call_duration for t in chain.iteration_timings if t.llm_call_duration > 0
+        )
         llm_rows = [
             ("Total Time", self._format_duration(chain.total_llm_duration_seconds)),
             ("Avg Time", self._format_duration(avg_llm_per_call)),
             ("Total Calls", f"{num_iters}"),
+            ("P50", self._format_duration(self._percentile(session_llm_durations, 50))),
+            ("P90", self._format_duration(self._percentile(session_llm_durations, 90))),
+            ("P95", self._format_duration(self._percentile(session_llm_durations, 95))),
+            ("P99", self._format_duration(self._percentile(session_llm_durations, 99))),
         ]
         for name, val in llm_rows:
             parts.append(f'<div class="stat-row"><span class="stat-name">{name}</span><span class="stat-val">{val}</span></div>')
