@@ -81,6 +81,8 @@ class HTMLReporter:
             )
             session_rows.append(row)
 
+        session_stats_json = json.dumps(stats.session_stats, ensure_ascii=False)
+
         index_html = INDEX_TEMPLATE.format(
             total_sessions=stats.total_sessions,
             total_requests=stats.total_requests,
@@ -93,6 +95,7 @@ class HTMLReporter:
             total_cache_tokens=stats.total_cache_tokens,
             session_rows="\n".join(session_rows),
             statistics_html=self._generate_global_statistics_html(result),
+            session_stats_json=session_stats_json,
         )
 
         with open(report_dir / "index.html", "w", encoding="utf-8") as f:

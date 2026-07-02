@@ -131,6 +131,18 @@ INDEX_TEMPLATE = """
 .page-tab-btn.active {{ background: white; color: #4a90d9; font-weight: bold; border-color: #e0e0e0; border-bottom-color: white; }}
 .page-tab-panel {{ display: none; padding-top: 20px; }}
 .page-tab-panel.active {{ display: block; }}
+/* Compare Panel */
+.compare-panel {{ background: white; border-radius: 8px; padding: 20px; margin-top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+.compare-table {{ width: 100%; border-collapse: collapse; }}
+.compare-table th {{ background: #4a90d9; color: white; padding: 10px 12px; text-align: left; font-size: 13px; cursor: pointer; white-space: nowrap; }}
+.compare-table th:hover {{ background: #3a7bc8; }}
+.compare-table th.baseline {{ background: #2d6bb4; position: relative; }}
+.compare-table th.baseline::after {{ content: ' (baseline)'; font-size: 10px; opacity: 0.8; }}
+.compare-table td {{ padding: 10px 12px; border-bottom: 1px solid #e0e0e0; font-size: 13px; }}
+.compare-table tr:hover {{ background: #f8f9fa; }}
+.delta-pos {{ color: #388e3c; font-size: 12px; margin-left: 4px; }}
+.delta-neg {{ color: #d32f2f; font-size: 12px; margin-left: 4px; }}
+.session-cb {{ cursor: pointer; width: 16px; height: 16px; }}
 /* Statistics Panel */
 .stat-cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }}
 .stat-card {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }}
@@ -210,6 +222,7 @@ INDEX_TEMPLATE = """
         <div class="page-tab-panel active" id="tab-sessions">
             <table>
                 <tr>
+                    <th style="width:30px"></th>
                     <th>Session ID</th>
                     <th>Model</th>
                     <th>Iterations</th>
@@ -218,12 +231,116 @@ INDEX_TEMPLATE = """
                 </tr>
                 {session_rows}
             </table>
+            <div class="compare-panel" id="comparePanel" style="display:none">
+                <h3 style="margin:20px 0 10px;color:#1a1a2e">Session Comparison <span style="font-size:12px;color:#999;font-weight:normal">(click a column header to set as baseline)</span></h3>
+                <div class="compare-table-wrapper">
+                    <table class="compare-table" id="compareTable"></table>
+                </div>
+            </div>
         </div>
         <div class="page-tab-panel" id="tab-statistics">
             {statistics_html}
         </div>
     </div>
     <script>
+        const sessionStatsData = {session_stats_json};
+        let selectedSessions = [];
+        let baselineSessionId = null;
+
+        function toggleSessionCompare(cb) {{
+            const sid = cb.dataset.sessionId;
+            if (cb.checked) {{
+                if (!selectedSessions.includes(sid)) selectedSessions.push(sid);
+            }} else {{
+                selectedSessions = selectedSessions.filter(s => s !== sid);
+                if (baselineSessionId === sid) baselineSessionId = null;
+            }}
+            renderComparison();
+        }}
+
+        function setBaseline(sid) {{
+            baselineSessionId = (baselineSessionId === sid) ? selectedSessions[0] : sid;
+            renderComparison();
+        }}
+
+        function fmtDur(s) {{
+            if (s <= 0) return 'N/A';
+            if (s < 1) return Math.round(s * 1000) + 'ms';
+            if (s < 60) return s.toFixed(1) + 's';
+            const m = Math.floor(s / 60);
+            const sec = Math.round(s % 60);
+            return m + 'm ' + sec + 's';
+        }}
+
+        function deltaHtml(val, baseVal, isTime) {{
+            const diff = val - baseVal;
+            if (diff === 0) return '';
+            const sign = diff > 0 ? '+' : '';
+            const cls = diff > 0 ? 'delta-pos' : 'delta-neg';
+            const formatted = isTime ? fmtDur(Math.abs(diff)) : Math.abs(diff).toLocaleString();
+            const prefix = diff > 0 ? '+' : '-';
+            return `<span class="${{cls}}">(${{prefix}}${{formatted}})</span>`;
+        }}
+
+        function renderComparison() {{
+            const panel = document.getElementById('comparePanel');
+            const table = document.getElementById('compareTable');
+            if (selectedSessions.length < 2) {{
+                panel.style.display = 'none';
+                return;
+            }}
+            panel.style.display = 'block';
+            if (!baselineSessionId || !selectedSessions.includes(baselineSessionId)) {{
+                baselineSessionId = selectedSessions[0];
+            }}
+
+            const statsMap = {{}};
+            sessionStatsData.forEach(s => {{ statsMap[s.session_id] = s; }});
+            const base = statsMap[baselineSessionId];
+
+            const metrics = [
+                ['Model', 'model', false],
+                ['Iterations', 'iterations', false],
+                ['LLM Time', 'llm_time', true],
+                ['Tool Time', 'tool_time', true],
+                ['Tokens', 'tokens', false],
+                ['Tool Calls', 'tool_calls', false],
+            ];
+
+            let html = '<tr><th>Metric</th>';
+            selectedSessions.forEach(sid => {{
+                const short = sid.split('_').pop().substring(0, 12);
+                const cls = sid === baselineSessionId ? 'baseline' : '';
+                html += `<th class="${{cls}}" onclick="setBaseline('${{sid}}')">${{short}}</th>`;
+            }});
+            html += '</tr>';
+
+            metrics.forEach(([label, key, isTime]) => {{
+                html += `<tr><td><strong>${{label}}</strong></td>`;
+                selectedSessions.forEach(sid => {{
+                    const s = statsMap[sid];
+                    if (!s) {{ html += '<td>N/A</td>'; return; }}
+                    const val = s[key];
+                    let cell;
+                    if (key === 'model') {{
+                        cell = val;
+                    }} else if (isTime) {{
+                        cell = fmtDur(val);
+                        if (sid !== baselineSessionId) cell += ' ' + deltaHtml(val, base[key], true);
+                    }} else {{
+                        cell = typeof val === 'number' ? val.toLocaleString() : val;
+                        if (sid !== baselineSessionId && typeof val === 'number') {{
+                            cell += ' ' + deltaHtml(val, base[key], false);
+                        }}
+                    }}
+                    html += `<td>${{cell}}</td>`;
+                }});
+                html += '</tr>';
+            }});
+
+            table.innerHTML = html;
+        }}
+
         function switchPageTab(tabId) {{
             document.querySelectorAll('.page-tab-btn').forEach(btn => {{
                 btn.classList.toggle('active', btn.getAttribute('onclick').includes("'" + tabId + "'"));
@@ -366,6 +483,7 @@ INDEX_TEMPLATE = """
 
 SESSION_ROW_TEMPLATE = """
 <tr>
+    <td><input type="checkbox" class="session-cb" data-session-id="{session_id}" onchange="toggleSessionCompare(this)" /></td>
     <td><a href="{detail_file}">{session_id_short}</a></td>
     <td class="model">{model_name}</td>
     <td>{total_iterations}</td>
