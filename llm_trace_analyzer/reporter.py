@@ -1244,45 +1244,42 @@ class HTMLReporter:
             '</div>'
         )
 
-    def _render_token_chart(self, chain: LLMChain) -> str:
-        """渲染 Token 分布堆叠柱状图（Input/Output 堆叠 + 推理时长折线 + 平均线）
+    def _render_token_chart(
+        self, chain: LLMChain, session_id: Optional[str] = None
+    ) -> str:
+        """渲染单个 Agent 的 Token 分布堆叠柱状图。
 
-        每个 chain 独立绘制，通过 pair_requests_responses 正确匹配 timing 与 response。
+        Input 在下（逐步增长），Output 在上，叠加 LLM 推理时长折线和平均线。
+        若指定 session_id，只绘制该 session 的数据；否则绘制 chain 中所有数据。
         """
-        if not chain.iteration_timings:
+        # 按 session 过滤
+        if session_id:
+            resps = [r for r in chain.responses if r.session_id == session_id]
+            timings = [t for t in chain.iteration_timings if t.session_id == session_id]
+        else:
+            resps = chain.responses
+            timings = chain.iteration_timings
+
+        if not timings or not resps:
             return ""
 
-        # 通过配对获取每轮的 response（按时间排序）
-        sorted_items = pair_requests_responses(chain.requests, chain.responses)
+        # 按时间排序的 response 列表
+        sorted_resps = sorted(resps, key=lambda r: r.timestamp)
 
-        # 构建 timing 查找表 (iteration_num → timing)
-        timing_lookup: Dict[int, IterationTiming] = {}
-        for t in chain.iteration_timings:
-            timing_lookup[t.iteration_num] = t
+        # 构建 response → timing 的 LLM duration 查找
+        dur_lookup: Dict[float, float] = {}
+        for t in timings:
+            if t.response_timestamp > 0:
+                dur_lookup[round(t.response_timestamp, 3)] = t.llm_call_duration
 
         chart_data: List[Dict] = []
-        seq = 0
-        for item in sorted_items:
-            resp = item["response"]
-            if not resp:
-                continue
-            seq += 1
-            input_tok = resp.input_tokens
-            output_tok = resp.output_tokens
-            total_tok = input_tok + output_tok
-
-            # 找到对应的 timing（通过匹配 session_id + iteration 对应关系）
-            llm_dur = 0.0
-            for t in chain.iteration_timings:
-                if t.session_id == resp.session_id and t.response_timestamp == resp.timestamp:
-                    llm_dur = t.llm_call_duration
-                    break
-
+        for i, resp in enumerate(sorted_resps, 1):
+            llm_dur = dur_lookup.get(round(resp.timestamp, 3), 0.0)
             chart_data.append({
-                "seq": seq,
-                "input": input_tok,
-                "output": output_tok,
-                "total": total_tok,
+                "seq": i,
+                "input": resp.input_tokens,
+                "output": resp.output_tokens,
+                "total": resp.input_tokens + resp.output_tokens,
                 "llm_duration": llm_dur,
             })
 
@@ -1298,7 +1295,7 @@ class HTMLReporter:
         avg_output = sum(d["output"] for d in chart_data) / len(chart_data)
         avg_total = avg_input + avg_output
 
-        # 推理时长归一化到 token 轴（用于折线叠加）
+        # 推理时长归一化到 token 轴
         max_llm = max((d["llm_duration"] for d in chart_data), default=0)
         llm_scale = max_tokens / max_llm if max_llm > 0 else 0
 
@@ -1306,7 +1303,7 @@ class HTMLReporter:
         bars: List[str] = []
         duration_dots: List[str] = []
         for d in chart_data:
-            # Input 在下面（先渲染），Output 在上面（后渲染）
+            # Input 在下（先渲染=底部），Output 在上（后渲染=顶部）
             input_h = (d["input"] / max_tokens) * chart_height
             output_h = (d["output"] / max_tokens) * chart_height
             llm_fmt = self._format_duration(d["llm_duration"])
@@ -1320,12 +1317,11 @@ class HTMLReporter:
                 f'onmousemove="moveChartTooltip(event)" '
                 f'onmouseleave="hideChartTooltip()">'
                 f'<div class="chart-bar" style="height:{chart_height}px">'
-                f'<div class="chart-bar-output" style="height:{output_h:.1f}px"></div>'
                 f'<div class="chart-bar-input" style="height:{input_h:.1f}px"></div>'
+                f'<div class="chart-bar-output" style="height:{output_h:.1f}px"></div>'
                 f'</div></div>'
             )
 
-            # 推理时长折线点位置
             if llm_scale > 0 and d["llm_duration"] > 0:
                 dot_bottom = (d["llm_duration"] * llm_scale / max_tokens) * 100
                 duration_dots.append(
@@ -1334,10 +1330,9 @@ class HTMLReporter:
                     f'bottom:{dot_bottom:.1f}%"></div>'
                 )
 
-        # 平均线
         avg_bottom_pct = (avg_total / max_tokens) * 100
-
-        chart_id = f"token-chart_{id(chain) % 10000}"
+        chart_id = f"token-chart_{id(chain)}_{session_id or 'all'}"
+        chart_id = f"token-chart_{abs(hash(chart_id)) % 100000}"
         dense_class = " dense" if len(chart_data) > 100 else ""
 
         return (
@@ -1365,6 +1360,52 @@ class HTMLReporter:
             f'</div>'
             '</div>'
         )
+
+    def _render_token_charts_section(self, chain: LLMChain) -> str:
+        """渲染 Token Distribution 区段：主 Agent + 子 Agent Tab 页"""
+        main_chart = self._render_token_chart(chain, chain.session_id)
+        if not main_chart:
+            return ""
+
+        if not chain.subagents:
+            return main_chart
+
+        # 有子 Agent：用 Tab 页展示
+        buttons: List[str] = []
+        panels: List[str] = []
+        agents = [("Main", chain.session_id)] + [
+            (sa.chain_path[-1] if sa.chain_path else self._short_session_id(sa.session_id),
+             sa.session_id)
+            for sa in sorted(chain.subagents, key=lambda s: s.start_time)
+        ]
+
+        for i, (label, sid) in enumerate(agents):
+            chart_html = self._render_token_chart(chain, sid)
+            if not chart_html:
+                continue
+            agent_key = f"tok_{self._short_session_id(sid)}_{i}"
+            active_class = " active" if i == 0 else ""
+            iter_count = len([r for r in chain.responses if r.session_id == sid])
+
+            buttons.append(TAB_BUTTON_TEMPLATE.format(
+                agent_key=agent_key,
+                label=label,
+                iteration_count=iter_count,
+                active_class=active_class,
+            ))
+            panels.append(TAB_PANEL_TEMPLATE.format(
+                agent_key=agent_key,
+                active_class=active_class,
+                timing_list_html="",
+                iterations_html=chart_html,
+            ))
+
+        if not buttons:
+            return main_chart
+
+        tab_nav_html = TAB_NAV_TEMPLATE.format(tab_buttons_html="\n".join(buttons))
+        tab_content_html = TAB_CONTENT_WRAPPER_TEMPLATE.format(tab_panels_html="\n".join(panels))
+        return tab_nav_html + tab_content_html
 
     def _compute_per_tool_stats(self, chains: List[LLMChain]) -> Dict[str, Dict]:
         """计算每个工具的调用次数、总耗时、平均耗时。
@@ -1479,9 +1520,9 @@ class HTMLReporter:
         if chart_html:
             parts.append(self._stat_section_raw_html("Timing Distribution", chart_html))
 
-        # Token 分布图（每个 chain 独立绘制）
+        # Token 分布图（每个 chain 独立绘制，只展示主 Agent）
         for chain in result.sorted_sessions:
-            token_chart_html = self._render_token_chart(chain)
+            token_chart_html = self._render_token_chart(chain, chain.session_id)
             if token_chart_html:
                 label = f"Token Distribution - {self._short_session_id(chain.session_id)}"
                 parts.append(self._stat_section_raw_html(label, token_chart_html))
@@ -1632,10 +1673,10 @@ class HTMLReporter:
         if chart_html:
             parts.append(self._stat_section_raw_html("Timing Distribution", chart_html))
 
-        # Token 分布图
-        token_chart_html = self._render_token_chart(chain)
-        if token_chart_html:
-            parts.append(self._stat_section_raw_html("Token Distribution", token_chart_html))
+        # Token 分布图（主 Agent + 子 Agent Tab 页）
+        token_section_html = self._render_token_charts_section(chain)
+        if token_section_html:
+            parts.append(self._stat_section_raw_html("Token Distribution", token_section_html))
 
         # 工具调用统计
         per_tool = self._compute_per_tool_stats([chain])
