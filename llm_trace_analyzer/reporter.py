@@ -1303,7 +1303,9 @@ class HTMLReporter:
         bars: List[str] = []
         line_points: List[str] = []
         for d in chart_data:
-            # Input 在下（先渲染=底部），Output 在上（后渲染=顶部）
+            # Output 先渲染（=顶部），Input 后渲染（=底部）
+            # flex-direction:column + justify-content:flex-end:
+            #   第一个 child 在上，第二个 child 在下
             input_h = (d["input"] / max_tokens) * chart_height
             output_h = (d["output"] / max_tokens) * chart_height
             llm_fmt = self._format_duration(d["llm_duration"])
@@ -1317,8 +1319,8 @@ class HTMLReporter:
                 f'onmousemove="moveChartTooltip(event)" '
                 f'onmouseleave="hideChartTooltip()">'
                 f'<div class="chart-bar" style="height:{chart_height}px">'
-                f'<div class="chart-bar-input" style="height:{input_h:.1f}px"></div>'
                 f'<div class="chart-bar-output" style="height:{output_h:.1f}px"></div>'
+                f'<div class="chart-bar-input" style="height:{input_h:.1f}px"></div>'
                 f'</div></div>'
             )
 
@@ -1332,17 +1334,13 @@ class HTMLReporter:
         chart_id = f"token-chart_{abs(hash((id(chain), session_id or 'all'))) % 100000}"
         dense_class = " dense" if len(chart_data) > 100 else ""
 
-        # SVG 折线 + 数据点
+        # SVG 折线
         svg_line = ""
-        if line_points:
+        if len(line_points) >= 2:
             pts = " ".join(line_points)
-            circles = "".join(
-                f'<circle cx="{p.split(",")[0]}" cy="{p.split(",")[1]}" r="0.8" />'
-                for p in line_points
-            )
             svg_line = (
                 f'<svg class="chart-duration-svg" viewBox="0 0 100 100" preserveAspectRatio="none">'
-                f'<polyline points="{pts}" />{circles}</svg>'
+                f'<polyline points="{pts}" /></svg>'
             )
 
         return (
