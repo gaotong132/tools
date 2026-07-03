@@ -210,6 +210,14 @@ INDEX_TEMPLATE = """
 .chart-duration-svg {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; overflow: visible; }}
 .chart-duration-svg polyline {{ fill: none; stroke: #ef5350; stroke-width: 1.5; vector-effect: non-scaling-stroke; }}
 .chart-legend-line-solid {{ display: inline-block; width: 16px; height: 2px; background: #ef5350; }}
+/* Token Agent Selector */
+.token-agent-selector {{ }}
+.token-agent-pills {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }}
+.token-agent-pill {{ display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 14px; background: #f0f0f0; color: #666; font-size: 12px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; user-select: none; }}
+.token-agent-pill:hover {{ background: #e3f2fd; color: #1976d2; }}
+.token-agent-pill.active {{ background: #4a90d9; color: white; border-color: #3a7bc8; }}
+.pill-count {{ background: rgba(0,0,0,0.1); padding: 1px 6px; border-radius: 8px; font-size: 11px; }}
+.token-agent-pill.active .pill-count {{ background: rgba(255,255,255,0.25); }}
 .chart-tooltip {{ position: fixed; pointer-events: none; background: #1a1a2e; color: white; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.8; z-index: 2000; box-shadow: 0 4px 16px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.15s; }}
 .chart-tooltip.visible {{ opacity: 1; }}
 .chart-tooltip .tt-name {{ font-weight: bold; color: #82b1ff; margin-bottom: 2px; }}
@@ -522,6 +530,14 @@ INDEX_TEMPLATE = """
                 }});
             }}
         }}
+        function switchTokenAgent(sectionId, idx) {{
+            const section = document.getElementById(sectionId);
+            if (!section) return;
+            const pills = section.querySelectorAll('.token-agent-pill');
+            const charts = section.querySelectorAll('.token-agent-chart');
+            pills.forEach((p, i) => p.classList.toggle('active', i === idx));
+            charts.forEach((c, i) => c.style.display = i === idx ? 'block' : 'none');
+        }}
         function toggleTokenChartSeries(el) {{
             const series = el.dataset.series;
             el.classList.toggle('active');
@@ -830,6 +846,14 @@ SESSION_DETAIL_TEMPLATE = """
 .chart-duration-svg {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; overflow: visible; }}
 .chart-duration-svg polyline {{ fill: none; stroke: #ef5350; stroke-width: 1.5; vector-effect: non-scaling-stroke; }}
 .chart-legend-line-solid {{ display: inline-block; width: 16px; height: 2px; background: #ef5350; }}
+/* Token Agent Selector */
+.token-agent-selector {{ }}
+.token-agent-pills {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }}
+.token-agent-pill {{ display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 14px; background: #f0f0f0; color: #666; font-size: 12px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; user-select: none; }}
+.token-agent-pill:hover {{ background: #e3f2fd; color: #1976d2; }}
+.token-agent-pill.active {{ background: #4a90d9; color: white; border-color: #3a7bc8; }}
+.pill-count {{ background: rgba(0,0,0,0.1); padding: 1px 6px; border-radius: 8px; font-size: 11px; }}
+.token-agent-pill.active .pill-count {{ background: rgba(255,255,255,0.25); }}
 .chart-tooltip {{ position: fixed; pointer-events: none; background: #1a1a2e; color: white; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.8; z-index: 2000; box-shadow: 0 4px 16px rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.15s; }}
 .chart-tooltip.visible {{ opacity: 1; }}
 .chart-tooltip .tt-name {{ font-weight: bold; color: #82b1ff; margin-bottom: 2px; }}
@@ -1028,6 +1052,14 @@ SESSION_DETAIL_TEMPLATE = """
                     if (legendItem) legendItem.textContent = formatMsDuration(val);
                 }});
             }}
+        }}
+        function switchTokenAgent(sectionId, idx) {{
+            const section = document.getElementById(sectionId);
+            if (!section) return;
+            const pills = section.querySelectorAll('.token-agent-pill');
+            const charts = section.querySelectorAll('.token-agent-chart');
+            pills.forEach((p, i) => p.classList.toggle('active', i === idx));
+            charts.forEach((c, i) => c.style.display = i === idx ? 'block' : 'none');
         }}
         function toggleTokenChartSeries(el) {{
             const series = el.dataset.series;

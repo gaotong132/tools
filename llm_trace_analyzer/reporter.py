@@ -1286,14 +1286,18 @@ class HTMLReporter:
         if not chart_data:
             return ""
 
-        # 裁剪尾部异常下降（Skill body 卸载等导致 input tokens 骤降）
-        while len(chart_data) > 1:
-            prev_input = chart_data[-2]["input"]
-            curr_input = chart_data[-1]["input"]
-            if prev_input > 0 and curr_input < prev_input * 0.9:
-                chart_data.pop()
-            else:
-                break
+        # 裁剪尾部异常下降（Skill body 卸载等导致 input tokens 骤降后可能恢复）
+        # 从峰值位置向后扫描，移除所有低于峰值 90% 的尾部数据
+        if len(chart_data) > 1:
+            peak_idx = max(range(len(chart_data)), key=lambda i: chart_data[i]["input"])
+            peak_input = chart_data[peak_idx]["input"]
+            trim_from = len(chart_data)
+            for i in range(peak_idx + 1, len(chart_data)):
+                if chart_data[i]["input"] < peak_input * 0.9:
+                    trim_from = i
+                    break
+            if trim_from < len(chart_data):
+                chart_data = chart_data[:trim_from]
 
         if not chart_data:
             return ""
@@ -1382,7 +1386,7 @@ class HTMLReporter:
         )
 
     def _render_token_charts_section(self, chain: LLMChain) -> str:
-        """渲染 Token Distribution 区段：主 Agent + 子 Agent Tab 页"""
+        """渲染 Token Distribution 区段：主 Agent + 子 Agent 切换"""
         main_chart = self._render_token_chart(chain, chain.session_id)
         if not main_chart:
             return ""
@@ -1390,42 +1394,44 @@ class HTMLReporter:
         if not chain.subagents:
             return main_chart
 
-        # 有子 Agent：用 Tab 页展示
-        buttons: List[str] = []
-        panels: List[str] = []
+        # 有子 Agent：用轻量级 agent 选择器
         agents = [("Main", chain.session_id)] + [
             (sa.chain_path[-1] if sa.chain_path else self._short_session_id(sa.session_id),
              sa.session_id)
             for sa in sorted(chain.subagents, key=lambda s: s.start_time)
         ]
 
+        section_id = f"tok-section-{abs(hash(chain.session_id)) % 100000}"
+        pills: List[str] = []
+        charts: List[str] = []
+
         for i, (label, sid) in enumerate(agents):
             chart_html = self._render_token_chart(chain, sid)
             if not chart_html:
                 continue
-            agent_key = f"tok_{self._short_session_id(sid)}_{i}"
-            active_class = " active" if i == 0 else ""
             iter_count = len([r for r in chain.responses if r.session_id == sid])
+            active = " active" if i == 0 else ""
+            display = "block" if i == 0 else "none"
 
-            buttons.append(TAB_BUTTON_TEMPLATE.format(
-                agent_key=agent_key,
-                label=label,
-                iteration_count=iter_count,
-                active_class=active_class,
-            ))
-            panels.append(TAB_PANEL_TEMPLATE.format(
-                agent_key=agent_key,
-                active_class=active_class,
-                timing_list_html="",
-                iterations_html=chart_html,
-            ))
+            pills.append(
+                f'<span class="token-agent-pill{active}" '
+                f'onclick="switchTokenAgent(\'{section_id}\', {len(pills)})">'
+                f'{label} <span class="pill-count">{iter_count}</span></span>'
+            )
+            charts.append(
+                f'<div class="token-agent-chart" style="display:{display}">'
+                f'{chart_html}</div>'
+            )
 
-        if not buttons:
+        if not pills:
             return main_chart
 
-        tab_nav_html = TAB_NAV_TEMPLATE.format(tab_buttons_html="\n".join(buttons))
-        tab_content_html = TAB_CONTENT_WRAPPER_TEMPLATE.format(tab_panels_html="\n".join(panels))
-        return tab_nav_html + tab_content_html
+        return (
+            f'<div class="token-agent-selector" id="{section_id}">'
+            f'<div class="token-agent-pills">{"".join(pills)}</div>'
+            f'<div class="token-agent-charts">{"".join(charts)}</div>'
+            f'</div>'
+        )
 
     def _compute_per_tool_stats(self, chains: List[LLMChain]) -> Dict[str, Dict]:
         """计算每个工具的调用次数、总耗时、平均耗时。
