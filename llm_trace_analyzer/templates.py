@@ -145,6 +145,11 @@ INDEX_TEMPLATE = """
 .delta-pos {{ color: #388e3c; font-size: 12px; margin-left: 4px; }}
 .delta-neg {{ color: #d32f2f; font-size: 12px; margin-left: 4px; }}
 .session-cb {{ cursor: pointer; width: 16px; height: 16px; }}
+.collapsible {{ cursor: pointer; }}
+.collapsible-content {{ display: none; }}
+.collapsible-content.expanded {{ display: block; }}
+.toggle-icon {{ font-size: 12px; transition: transform 0.2s; }}
+.toggle-icon.rotated {{ transform: rotate(90deg); }}
 /* Statistics Panel */
 .stat-cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }}
 .stat-card {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }}
@@ -247,6 +252,17 @@ INDEX_TEMPLATE = """
         </div>
     </div>
     <script>
+        function toggleCollapsible(element) {{
+            const content = element.nextElementSibling;
+            const icon = element.querySelector('.toggle-icon');
+            if (content.classList.contains('expanded')) {{
+                content.classList.remove('expanded');
+                if (icon) icon.classList.remove('rotated');
+            }} else {{
+                content.classList.add('expanded');
+                if (icon) icon.classList.add('rotated');
+            }}
+        }}
         const sessionStatsData = {session_stats_json};
         let selectedSessions = [];
         let baselineSessionId = null;
