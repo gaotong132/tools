@@ -553,11 +553,15 @@ class ChainAnalyzer:
             s_output_tokens = sum(r.output_tokens for r in chain.responses)
             s_cache_tokens = sum(r.cache_tokens for r in chain.responses)
             s_tool_calls = sum(len(r.tool_calls) for r in chain.responses if r.tool_calls)
+            s_reasoning_chars = sum(len(r.reasoning_content or "") for r in chain.responses)
+            s_content_chars = sum(len(r.content or "") for r in chain.responses)
             iters = chain.total_iterations
+            total_time = chain.total_llm_duration_seconds + chain.total_tool_duration_seconds
             stats.session_stats.append({
                 "session_id": chain.session_id,
                 "model": chain.model_name,
                 "iterations": iters,
+                "total_time": total_time,
                 "llm_time": chain.total_llm_duration_seconds,
                 "tool_time": chain.total_tool_duration_seconds,
                 "avg_llm_time": chain.total_llm_duration_seconds / iters if iters > 0 else 0,
@@ -566,6 +570,8 @@ class ChainAnalyzer:
                 "output_tokens": s_output_tokens,
                 "cache_tokens": s_cache_tokens,
                 "tokens_per_sec": s_output_tokens / chain.total_llm_duration_seconds if chain.total_llm_duration_seconds > 0 else 0,
+                "reasoning_chars": s_reasoning_chars,
+                "content_chars": s_content_chars,
                 "tool_calls": s_tool_calls,
             })
 

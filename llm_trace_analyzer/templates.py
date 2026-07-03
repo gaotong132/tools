@@ -325,6 +325,7 @@ INDEX_TEMPLATE = """
                 ['Prompt', 'prompt', 'string'],
                 ['Model', 'model', 'string'],
                 ['Iterations', 'iterations', 'number'],
+                ['Total Time', 'total_time', 'time'],
                 ['LLM Time', 'llm_time', 'time'],
                 ['Avg LLM', 'avg_llm_time', 'time'],
                 ['Tool Time', 'tool_time', 'time'],
@@ -333,6 +334,8 @@ INDEX_TEMPLATE = """
                 ['Output Tokens', 'output_tokens', 'number'],
                 ['Cache Tokens ⚠', 'cache_tokens', 'number'],
                 ['Output tok/s', 'tokens_per_sec', 'rate'],
+                ['Reasoning Chars', 'reasoning_chars', 'number'],
+                ['Content Chars', 'content_chars', 'number'],
                 ['Tool Calls', 'tool_calls', 'number'],
             ];
 
