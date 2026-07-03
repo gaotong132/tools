@@ -1578,14 +1578,32 @@ class HTMLReporter:
             (t.tool_processing_duration for chain in result.sorted_sessions for t in chain.iteration_timings),
             default=0.0,
         )
+        min_llm_dur = min(
+            (t.llm_call_duration for chain in result.sorted_sessions for t in chain.iteration_timings if t.llm_call_duration > 0),
+            default=0.0,
+        )
+        min_tool_dur = min(
+            (t.tool_processing_duration for chain in result.sorted_sessions for t in chain.iteration_timings if t.tool_processing_duration > 0),
+            default=0.0,
+        )
+        # 每轮工具调用数 min/max
+        all_tool_counts = [
+            len(r.tool_calls) for chain in result.sorted_sessions
+            for r in chain.responses if r.tool_calls
+        ]
+        max_tc = max(all_tool_counts) if all_tool_counts else 0
+        min_tc = min(all_tool_counts) if all_tool_counts else 0
+
         timing_rows = [
             ("LLM Avg", self._format_duration(stats.avg_llm_time_seconds)),
-            ("Tool Avg", self._format_duration(stats.avg_tool_time_seconds)),
-            ("LLM Total", self._format_duration(stats.total_llm_time_seconds)),
-            ("Tool Total", self._format_duration(stats.total_tool_time_seconds)),
-            ("Total Duration", self._format_duration(stats.total_duration_seconds)),
+            ("LLM Min", self._format_duration(min_llm_dur)),
             ("LLM Max", self._format_duration(max_llm)),
+            ("Tool Avg", self._format_duration(stats.avg_tool_time_seconds)),
+            ("Tool Min", self._format_duration(min_tool_dur)),
             ("Tool Max", self._format_duration(max_tool)),
+            ("Total Duration", self._format_duration(stats.total_duration_seconds)),
+            ("Tool Calls/Iter Max", f"{max_tc}"),
+            ("Tool Calls/Iter Min", f"{min_tc}"),
         ]
         if stats.total_iterations > 0:
             avg_total = (stats.total_llm_time_seconds + stats.total_tool_time_seconds) / stats.total_iterations
@@ -1722,6 +1740,10 @@ class HTMLReporter:
         # 时间统计
         avg_llm = chain.total_llm_duration_seconds / num_iters if num_iters > 0 else 0
         avg_tool = chain.total_tool_duration_seconds / num_iters if num_iters > 0 else 0
+        # 每轮工具调用数 min/max
+        s_tool_counts = [len(r.tool_calls) for r in chain.responses if r.tool_calls]
+        s_max_tc = max(s_tool_counts) if s_tool_counts else 0
+        s_min_tc = min(s_tool_counts) if s_tool_counts else 0
         parts.append(self._stat_section_html("Timing", [
             ("LLM Avg", self._format_duration(avg_llm)),
             ("LLM Min", self._format_duration(min_llm)),
@@ -1732,6 +1754,8 @@ class HTMLReporter:
             ("Avg per Iteration", self._format_duration(avg_llm + avg_tool)),
             ("LLM Total", self._format_duration(chain.total_llm_duration_seconds)),
             ("Tool Total", self._format_duration(chain.total_tool_duration_seconds)),
+            ("Tool Calls/Iter Max", f"{s_max_tc}"),
+            ("Tool Calls/Iter Min", f"{s_min_tc}"),
         ]))
 
         # Token 统计
