@@ -1244,36 +1244,50 @@ class HTMLReporter:
             '</div>'
         )
 
-    def _render_token_chart(
-        self, timings: List[IterationTiming], responses: List[LLMResponse]
-    ) -> str:
-        """渲染 Token 分布堆叠柱状图（Input/Output 堆叠 + 推理时长折线 + 平均线）"""
-        if not timings:
+    def _render_token_chart(self, chain: LLMChain) -> str:
+        """渲染 Token 分布堆叠柱状图（Input/Output 堆叠 + 推理时长折线 + 平均线）
+
+        每个 chain 独立绘制，通过 pair_requests_responses 正确匹配 timing 与 response。
+        """
+        if not chain.iteration_timings:
             return ""
 
-        # 构建 iteration_num → response 查找表
-        resp_lookup: Dict[int, LLMResponse] = {}
-        for r in responses:
-            resp_lookup[r.iteration] = r
+        # 通过配对获取每轮的 response（按时间排序）
+        sorted_items = pair_requests_responses(chain.requests, chain.responses)
 
-        sorted_timings = sorted(
-            timings, key=lambda t: t.request_timestamp if t.request_timestamp > 0 else t.response_timestamp
-        )
+        # 构建 timing 查找表 (iteration_num → timing)
+        timing_lookup: Dict[int, IterationTiming] = {}
+        for t in chain.iteration_timings:
+            timing_lookup[t.iteration_num] = t
 
-        # 计算每轮数据
         chart_data: List[Dict] = []
-        for i, t in enumerate(sorted_timings, 1):
-            resp = resp_lookup.get(t.iteration_num)
-            input_tok = resp.input_tokens if resp else 0
-            output_tok = resp.output_tokens if resp else 0
+        seq = 0
+        for item in sorted_items:
+            resp = item["response"]
+            if not resp:
+                continue
+            seq += 1
+            input_tok = resp.input_tokens
+            output_tok = resp.output_tokens
             total_tok = input_tok + output_tok
+
+            # 找到对应的 timing（通过匹配 session_id + iteration 对应关系）
+            llm_dur = 0.0
+            for t in chain.iteration_timings:
+                if t.session_id == resp.session_id and t.response_timestamp == resp.timestamp:
+                    llm_dur = t.llm_call_duration
+                    break
+
             chart_data.append({
-                "seq": i,
+                "seq": seq,
                 "input": input_tok,
                 "output": output_tok,
                 "total": total_tok,
-                "llm_duration": t.llm_call_duration,
+                "llm_duration": llm_dur,
             })
+
+        if not chart_data:
+            return ""
 
         max_tokens = max(d["total"] for d in chart_data)
         if max_tokens <= 0:
@@ -1285,15 +1299,16 @@ class HTMLReporter:
         avg_total = avg_input + avg_output
 
         # 推理时长归一化到 token 轴（用于折线叠加）
-        max_llm = max(d["llm_duration"] for d in chart_data)
+        max_llm = max((d["llm_duration"] for d in chart_data), default=0)
         llm_scale = max_tokens / max_llm if max_llm > 0 else 0
 
         chart_height = 200
         bars: List[str] = []
         duration_dots: List[str] = []
         for d in chart_data:
-            output_h = (d["output"] / max_tokens) * chart_height
+            # Input 在下面（先渲染），Output 在上面（后渲染）
             input_h = (d["input"] / max_tokens) * chart_height
+            output_h = (d["output"] / max_tokens) * chart_height
             llm_fmt = self._format_duration(d["llm_duration"])
 
             bars.append(
@@ -1305,8 +1320,8 @@ class HTMLReporter:
                 f'onmousemove="moveChartTooltip(event)" '
                 f'onmouseleave="hideChartTooltip()">'
                 f'<div class="chart-bar" style="height:{chart_height}px">'
-                f'<div class="chart-bar-input" style="height:{input_h:.1f}px"></div>'
                 f'<div class="chart-bar-output" style="height:{output_h:.1f}px"></div>'
+                f'<div class="chart-bar-input" style="height:{input_h:.1f}px"></div>'
                 f'</div></div>'
             )
 
@@ -1322,18 +1337,18 @@ class HTMLReporter:
         # 平均线
         avg_bottom_pct = (avg_total / max_tokens) * 100
 
-        chart_id = f"token-chart_{id(timings) % 10000}"
+        chart_id = f"token-chart_{id(chain) % 10000}"
         dense_class = " dense" if len(chart_data) > 100 else ""
 
         return (
             f'<div class="timing-chart-wrapper" id="{chart_id}">'
             '<div class="chart-legend">'
-            f'<div class="chart-legend-item chart-toggle active" data-series="output" '
-            f'onclick="toggleTokenChartSeries(this)">'
-            f'<div class="chart-legend-color chart-legend-output"></div>Output Tokens</div>'
             f'<div class="chart-legend-item chart-toggle active" data-series="input" '
             f'onclick="toggleTokenChartSeries(this)">'
             f'<div class="chart-legend-color chart-legend-input"></div>Input Tokens</div>'
+            f'<div class="chart-legend-item chart-toggle active" data-series="output" '
+            f'onclick="toggleTokenChartSeries(this)">'
+            f'<div class="chart-legend-color chart-legend-output"></div>Output Tokens</div>'
             f'<div class="chart-legend-item">'
             f'<span class="chart-legend-line-solid"></span> LLM Duration</div>'
             '</div>'
@@ -1458,18 +1473,18 @@ class HTMLReporter:
 
         # 时间分布图
         all_timings = []
-        all_responses = []
         for chain in result.sorted_sessions:
             all_timings.extend(chain.iteration_timings)
-            all_responses.extend(chain.responses)
         chart_html = self._render_timing_chart(all_timings)
         if chart_html:
             parts.append(self._stat_section_raw_html("Timing Distribution", chart_html))
 
-        # Token 分布图
-        token_chart_html = self._render_token_chart(all_timings, all_responses)
-        if token_chart_html:
-            parts.append(self._stat_section_raw_html("Token Distribution", token_chart_html))
+        # Token 分布图（每个 chain 独立绘制）
+        for chain in result.sorted_sessions:
+            token_chart_html = self._render_token_chart(chain)
+            if token_chart_html:
+                label = f"Token Distribution - {self._short_session_id(chain.session_id)}"
+                parts.append(self._stat_section_raw_html(label, token_chart_html))
 
         # 工具调用统计
         per_tool = self._compute_per_tool_stats(result.sorted_sessions)
@@ -1618,7 +1633,7 @@ class HTMLReporter:
             parts.append(self._stat_section_raw_html("Timing Distribution", chart_html))
 
         # Token 分布图
-        token_chart_html = self._render_token_chart(chain.iteration_timings, chain.responses)
+        token_chart_html = self._render_token_chart(chain)
         if token_chart_html:
             parts.append(self._stat_section_raw_html("Token Distribution", token_chart_html))
 
