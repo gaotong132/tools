@@ -322,23 +322,30 @@ INDEX_TEMPLATE = """
             const base = statsMap[baselineSessionId];
 
             const metrics = [
-                ['Prompt', 'prompt', 'string'],
-                ['Model', 'model', 'string'],
-                ['Iterations', 'iterations', 'number'],
-                ['Total Time', 'total_time', 'time'],
-                ['LLM Time', 'llm_time', 'time'],
-                ['Avg LLM', 'avg_llm_time', 'time'],
-                ['Tool Time', 'tool_time', 'time'],
-                ['Avg Tool', 'avg_tool_time', 'time'],
-                ['Total Tokens', 'tokens', 'number'],
-                ['Output Tokens', 'output_tokens', 'number'],
-                ['Cache Tokens ⚠', 'cache_tokens', 'number'],
-                ['Output tok/s', 'tokens_per_sec', 'rate'],
-                ['Reasoning Chars', 'reasoning_chars', 'number'],
-                ['Content Chars', 'content_chars', 'number'],
-                ['Tool Calls', 'tool_calls', 'number'],
+                ['基础信息', [
+                    ['Prompt', 'prompt', 'string'],
+                    ['Model', 'model', 'string'],
+                    ['Iterations', 'iterations', 'number'],
+                    ['Total Time', 'total_time', 'time'],
+                    ['LLM Time', 'llm_time', 'time'],
+                    ['Avg LLM', 'avg_llm_time', 'time'],
+                    ['Tool Time', 'tool_time', 'time'],
+                    ['Avg Tool', 'avg_tool_time', 'time'],
+                ]],
+                ['Token 信息', [
+                    ['Total Tokens', 'tokens', 'number'],
+                    ['Output Tokens', 'output_tokens', 'number'],
+                    ['Cache Tokens ⚠', 'cache_tokens', 'number'],
+                    ['Output tok/s', 'tokens_per_sec', 'rate'],
+                    ['Reasoning Chars', 'reasoning_chars', 'number'],
+                    ['Content Chars', 'content_chars', 'number'],
+                ]],
+                ['工具信息', [
+                    ['Tool Calls', 'tool_calls', 'number'],
+                ]],
             ];
 
+            const colSpan = selectedSessions.length + 1;
             let html = '<tr><th>Metric</th>';
             selectedSessions.forEach(sid => {{
                 const short = sid.split('_').pop().substring(0, 12);
@@ -347,7 +354,9 @@ INDEX_TEMPLATE = """
             }});
             html += '</tr>';
 
-            metrics.forEach(([label, key, type]) => {{
+            metrics.forEach(([groupName, items]) => {{
+                html += `<tr><td colspan="${{colSpan}}" style="background:#f0f4f8;font-weight:bold;color:#4a90d9;padding:8px 12px;font-size:13px">${{groupName}}</td></tr>`;
+                items.forEach(([label, key, type]) => {{
                 html += `<tr><td><strong>${{label}}</strong></td>`;
                 selectedSessions.forEach(sid => {{
                     const s = statsMap[sid];
@@ -378,6 +387,7 @@ INDEX_TEMPLATE = """
                     html += `<td>${{cell}}</td>`;
                 }});
                 html += '</tr>';
+                }});
             }});
 
             table.innerHTML = html;
