@@ -1286,6 +1286,18 @@ class HTMLReporter:
         if not chart_data:
             return ""
 
+        # 裁剪尾部异常下降（Skill body 卸载等导致 input tokens 骤降）
+        while len(chart_data) > 1:
+            prev_input = chart_data[-2]["input"]
+            curr_input = chart_data[-1]["input"]
+            if prev_input > 0 and curr_input < prev_input * 0.9:
+                chart_data.pop()
+            else:
+                break
+
+        if not chart_data:
+            return ""
+
         max_tokens = max(d["total"] for d in chart_data)
         if max_tokens <= 0:
             return ""
