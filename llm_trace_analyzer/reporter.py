@@ -1561,15 +1561,15 @@ class HTMLReporter:
         parts = [
             '<table class="tool-calls-table">'
             "<tr>"
-            '<th onclick="sortToolTable(this, \'name\')" class="sortable">Tool &#9650;&#9660;</th>'
-            '<th onclick="sortToolTable(this, \'ratio\')" class="sortable">Ratio &#9650;&#9660;</th>'
-            '<th onclick="sortToolTable(this, \'calls\')" class="sortable">Calls &#9650;&#9660;</th>'
-            '<th onclick="sortToolTable(this, \'total\')" class="sortable">Total Time &#9650;&#9660;</th>'
-            '<th onclick="sortToolTable(this, \'avg\')" class="sortable">Avg Time &#9650;&#9660;</th>'
+            '<th onclick="sortToolTable(this, \'name\')" class="sortable">Tool</th>'
+            '<th onclick="sortToolTable(this, \'ratio\')" class="sortable">Ratio</th>'
+            '<th onclick="sortToolTable(this, \'calls\')" class="sortable">Calls</th>'
+            '<th onclick="sortToolTable(this, \'total\')" class="sortable">Total Time</th>'
+            '<th onclick="sortToolTable(this, \'avg\')" class="sortable">Avg Time</th>'
         ]
         if has_failures:
             parts.append(
-                '<th onclick="sortToolTable(this, \'failed\')" class="sortable">Failed &#9650;&#9660;</th>'
+                '<th onclick="sortToolTable(this, \'failed\')" class="sortable">Failed</th>'
             )
         parts.append("</tr>")
         for name, s in per_tool.items():
@@ -2036,8 +2036,9 @@ class HTMLReporter:
         """生成统计卡片 HTML。cards: [(value, label), ...]"""
         parts = ['<div class="stat-cards">']
         for val, label in cards:
+            extra_cls = " stat-card-warn" if "Failed" in str(label) else ""
             parts.append(
-                f'<div class="stat-card"><div class="stat-value">{val}</div>'
+                f'<div class="stat-card{extra_cls}"><div class="stat-value">{val}</div>'
                 f'<div class="stat-label">{label}</div></div>'
             )
         parts.append("</div>")

@@ -155,6 +155,7 @@ INDEX_TEMPLATE = """
 .stat-card {{ background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }}
 .stat-card .stat-value {{ font-size: 28px; font-weight: bold; color: #4a90d9; }}
 .stat-card .stat-label {{ font-size: 13px; color: #666; margin-top: 4px; }}
+.stat-card-warn .stat-value {{ color: #d32f2f; }}
 .stat-section {{ background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
 .stat-section h3 {{ color: #1a1a2e; margin-bottom: 15px; font-size: 16px; border-bottom: 2px solid #4a90d9; padding-bottom: 8px; }}
 .stat-row {{ display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }}
@@ -332,13 +333,13 @@ INDEX_TEMPLATE = """
             return m + 'm ' + sec + 's';
         }}
 
-        function deltaHtml(val, baseVal, isTime) {{
+        function deltaHtml(val, baseVal, isTime, lib) {{
             const diff = val - baseVal;
             if (diff === 0) return '';
-            const sign = diff > 0 ? '+' : '';
-            const cls = diff > 0 ? 'delta-pos' : 'delta-neg';
             const formatted = isTime ? fmtDur(Math.abs(diff)) : Math.abs(diff).toLocaleString();
             const prefix = diff > 0 ? '+' : '-';
+            const good = lib ? (diff < 0) : (diff > 0);
+            const cls = good ? 'delta-pos' : 'delta-neg';
             return `<span class="${{cls}}">(${{prefix}}${{formatted}})</span>`;
         }}
 
@@ -364,24 +365,24 @@ INDEX_TEMPLATE = """
                 ['基础信息', [
                     ['Prompt', 'prompt', 'string'],
                     ['Model', 'model', 'string'],
-                    ['Iterations', 'iterations', 'number'],
-                    ['Total Time', 'total_time', 'time'],
+                    ['Iterations', 'iterations', 'number', true],
+                    ['Total Time', 'total_time', 'time', true],
                 ]],
                 ['LLM 信息', [
-                    ['LLM Time', 'llm_time', 'time'],
-                    ['Avg LLM', 'avg_llm_time', 'time'],
-                    ['Total Tokens', 'tokens', 'number'],
-                    ['Output Tokens', 'output_tokens', 'number'],
-                    ['Cache Tokens ⚠', 'cache_tokens', 'number'],
-                    ['Output tok/s', 'tokens_per_sec', 'rate'],
+                    ['LLM Time', 'llm_time', 'time', true],
+                    ['Avg LLM', 'avg_llm_time', 'time', true],
+                    ['Total Tokens', 'tokens', 'number', true],
+                    ['Output Tokens', 'output_tokens', 'number', true],
+                    ['Cache Tokens ⚠', 'cache_tokens', 'number', false],
+                    ['Output tok/s', 'tokens_per_sec', 'rate', false],
                     ['Reasoning Chars', 'reasoning_chars', 'number'],
                     ['Content Chars', 'content_chars', 'number'],
                 ]],
                 ['工具信息', [
-                    ['Tool Time', 'tool_time', 'time'],
-                    ['Avg Tool', 'avg_tool_time', 'time'],
+                    ['Tool Time', 'tool_time', 'time', true],
+                    ['Avg Tool', 'avg_tool_time', 'time', true],
                     ['Tool Calls', 'tool_calls', 'number'],
-                    ['Tool Failed ⚠', 'failed_tool_calls', 'number'],
+                    ['Tool Failed ⚠', 'failed_tool_calls', 'number', true],
                 ]],
             ];
 
@@ -396,7 +397,7 @@ INDEX_TEMPLATE = """
 
             metrics.forEach(([groupName, items]) => {{
                 html += `<tr><td colspan="${{colSpan}}" style="background:#f0f4f8;font-weight:bold;color:#4a90d9;padding:8px 12px;font-size:13px">${{groupName}}</td></tr>`;
-                items.forEach(([label, key, type]) => {{
+                items.forEach(([label, key, type, lib]) => {{
                 html += `<tr><td><strong>${{label}}</strong></td>`;
                 selectedSessions.forEach(sid => {{
                     const s = statsMap[sid];
@@ -407,21 +408,22 @@ INDEX_TEMPLATE = """
                         cell = val;
                     }} else if (type === 'time') {{
                         cell = fmtDur(val);
-                        if (sid !== baselineSessionId) cell += ' ' + deltaHtml(val, base[key], true);
+                        if (sid !== baselineSessionId) cell += ' ' + deltaHtml(val, base[key], true, lib);
                     }} else if (type === 'rate') {{
                         cell = val.toFixed(1) + ' tok/s';
                         if (sid !== baselineSessionId) {{
                             const diff = val - base[key];
                             if (diff !== 0) {{
                                 const sign = diff > 0 ? '+' : '';
-                                const cls = diff > 0 ? 'delta-pos' : 'delta-neg';
+                                const good = lib ? (diff < 0) : (diff > 0);
+                                const cls = good ? 'delta-pos' : 'delta-neg';
                                 cell += ` <span class="${{cls}}">(${{sign}}${{diff.toFixed(1)}})</span>`;
                             }}
                         }}
                     }} else {{
                         cell = typeof val === 'number' ? val.toLocaleString() : val;
                         if (sid !== baselineSessionId && typeof val === 'number') {{
-                            cell += ' ' + deltaHtml(val, base[key], false);
+                            cell += ' ' + deltaHtml(val, base[key], false, lib);
                         }}
                     }}
                     html += `<td>${{cell}}</td>`;
@@ -793,6 +795,7 @@ SESSION_DETAIL_TEMPLATE = """
 .stat-card {{ background: white; border-radius: 8px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }}
 .stat-card .stat-value {{ font-size: 24px; font-weight: bold; color: #4a90d9; }}
 .stat-card .stat-label {{ font-size: 12px; color: #666; margin-top: 4px; }}
+.stat-card-warn .stat-value {{ color: #d32f2f; }}
 .stat-section {{ background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
 .stat-section h3 {{ color: #1a1a2e; margin-bottom: 15px; font-size: 16px; border-bottom: 2px solid #4a90d9; padding-bottom: 8px; }}
 .stat-row {{ display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }}
