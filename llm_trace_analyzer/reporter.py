@@ -1240,7 +1240,7 @@ class HTMLReporter:
             return ""
 
         # 构建 (session_id, iteration_num) -> (tool_count, has_failure) 映射
-        iter_info: Dict[Tuple[str, int], Tuple[int, bool]] = {}
+        iter_info: Dict[Tuple[str, int], Tuple[int, int]] = {}
         if chains:
             for chain in chains:
                 # 构建 (session_id, response_timestamp) -> tool_count 映射
@@ -1264,7 +1264,7 @@ class HTMLReporter:
                 for sid in resp_ts_by_sid:
                     resp_ts_by_sid[sid].sort()
 
-                # 构建失败的 request timestamps
+                # 构建失败的 request timestamps（含失败次数计数）
                 fail_req_ts: Dict[str, List[float]] = {}
                 seen_ids: set = set()
                 for req in chain.requests:
@@ -1283,20 +1283,21 @@ class HTMLReporter:
                             fail_req_ts[sid].append(round(req.timestamp, 3))
 
                 # 将失败归属到触发工具调用的 response（最近的 preceding response）
-                fail_resp_ts: set = set()
+                fail_resp_count: Dict[Tuple[str, float], int] = {}
                 for sid, fail_ts_list in fail_req_ts.items():
                     sorted_resp_ts = resp_ts_by_sid.get(sid, [])
                     for fts in fail_ts_list:
                         idx = bisect_right(sorted_resp_ts, fts) - 1
                         if idx >= 0:
-                            fail_resp_ts.add((sid, sorted_resp_ts[idx]))
+                            key = (sid, sorted_resp_ts[idx])
+                            fail_resp_count[key] = fail_resp_count.get(key, 0) + 1
 
                 # 按 timing 的 iteration_num 存储
                 for t in chain.iteration_timings:
                     resp_ts = round(t.response_timestamp, 3)
                     tool_count = ts_tool_count.get((t.session_id, resp_ts), 0)
-                    has_fail = (t.session_id, resp_ts) in fail_resp_ts
-                    iter_info[(t.session_id, t.iteration_num)] = (tool_count, has_fail)
+                    fail_count = fail_resp_count.get((t.session_id, resp_ts), 0)
+                    iter_info[(t.session_id, t.iteration_num)] = (tool_count, fail_count)
 
         chart_height = 200
         bars: List[str] = []
@@ -1309,22 +1310,21 @@ class HTMLReporter:
             tool_fmt = self._format_duration(t.tool_processing_duration)
             total_fmt = self._format_duration(t.llm_call_duration + t.tool_processing_duration)
 
-            tool_count, has_failure = iter_info.get((t.session_id, t.iteration_num), (0, False))
-            fail_cls = " chart-bar-fail" if has_failure else ""
-            fail_dot = '<span class="chart-fail-dot"></span>' if has_failure else ""
+            tool_count, fail_count = iter_info.get((t.session_id, t.iteration_num), (0, 0))
+            fail_cls = " chart-bar-fail" if fail_count > 0 else ""
 
             bars.append(
                 f'<div class="chart-bar-col" '
                 f'data-seq="{i}" data-llm-ms="{llm_ms}" data-tool-ms="{tool_ms}" '
                 f'data-llm="{llm_fmt}" data-tool="{tool_fmt}" data-total="{total_fmt}" '
-                f'data-tool-count="{tool_count}" data-has-failure="{1 if has_failure else 0}" '
+                f'data-tool-count="{tool_count}" data-fail-count="{fail_count}" '
                 f'onmouseenter="showChartTooltip(event, this)" '
                 f'onmousemove="moveChartTooltip(event)" '
                 f'onmouseleave="hideChartTooltip()">'
                 f'<div class="chart-bar{fail_cls}" style="height:{chart_height}px">'
                 f'<div class="chart-bar-tool" style="height:{tool_h:.1f}px"></div>'
                 f'<div class="chart-bar-llm" style="height:{llm_h:.1f}px"></div>'
-                f"</div>{fail_dot}</div>"
+                f"</div></div>"
             )
 
         # Pxx 参考线（默认隐藏）
@@ -1354,7 +1354,7 @@ class HTMLReporter:
 
         # 工具调用次数虚线折线（SVG）
         tool_counts_list = [
-            iter_info.get((t.session_id, t.iteration_num), (0, False))[0]
+            iter_info.get((t.session_id, t.iteration_num), (0, 0))[0]
             for t in sorted_timings
         ]
         max_tc = max(tool_counts_list) if tool_counts_list else 0
@@ -1376,13 +1376,13 @@ class HTMLReporter:
 
         # 工具次数/失败统计
         total_iters = len(sorted_timings)
-        fail_iters_count = sum(1 for _, (_, f) in iter_info.items() if f)
+        fail_iters_count = sum(1 for _, (_, f) in iter_info.items() if f > 0)
         calls_legend = (
             f'<span class="chart-calls-legend-item">'
             f'<span class="chart-calls-legend-line"></span>'
             f"Tool Calls (max: {max_tc})</span>"
             f'<span class="chart-calls-legend-item">'
-            f'<span class="chart-calls-legend-dot chart-fail-dot"></span>'
+            f'<span class="chart-calls-legend-dot"></span>'
             f"Failed ({fail_iters_count}/{total_iters})</span>"
         )
 

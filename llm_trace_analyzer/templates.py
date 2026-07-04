@@ -204,7 +204,6 @@ INDEX_TEMPLATE = """
 .timing-chart-wrapper.overlay-mode-pxx .chart-tc-svg {{ display: none; }}
 .timing-chart-wrapper.overlay-mode-pxx .chart-tool-count {{ display: none; }}
 .chart-bar-fail {{ background: rgba(211, 47, 47, 0.08); }}
-.chart-fail-dot {{ position: absolute; top: -4px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; border-radius: 50%; background: #d32f2f; z-index: 3; }}
 .chart-legend-sep {{ width: 1px; height: 16px; background: #ccc; margin: 0 8px; display: inline-block; vertical-align: middle; }}
 .chart-calls-legend {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; font-size: 12px; color: #555; }}
 .chart-calls-legend-item {{ display: flex; align-items: center; gap: 4px; }}
@@ -486,14 +485,14 @@ INDEX_TEMPLATE = """
                 const tool = el.dataset.tool;
                 const total = el.dataset.total;
                 const tc = el.dataset.toolCount || '0';
-                const fail = el.dataset.hasFailure === '1';
+                const fc = parseInt(el.dataset.failCount) || 0;
                 tt.innerHTML = `
                     <div class="tt-name">#${{seq}}</div>
                     <div class="tt-row"><span class="tt-label">LLM Time</span><span class="tt-value">${{llm}}</span></div>
                     <div class="tt-row"><span class="tt-label">Tool Time</span><span class="tt-value">${{tool}}</span></div>
                     <div class="tt-row"><span class="tt-label">Total</span><span class="tt-value">${{total}}</span></div>
                     <div class="tt-row"><span class="tt-label">Tool Calls</span><span class="tt-value">${{tc}}</span></div>
-                    ${{fail ? '<div class="tt-row" style="color:#d32f2f"><span class="tt-label">Status</span><span class="tt-value">Failed</span></div>' : ''}}
+                    ${{fc > 0 ? '<div class="tt-row" style="color:#d32f2f"><span class="tt-label">Failed</span><span class="tt-value">' + fc + '</span></div>' : ''}}
                 `;
             }}
             tt.style.left = (event.clientX + 12) + 'px';
@@ -879,7 +878,6 @@ SESSION_DETAIL_TEMPLATE = """
 .timing-chart-wrapper.overlay-mode-pxx .chart-tc-svg {{ display: none; }}
 .timing-chart-wrapper.overlay-mode-pxx .chart-tool-count {{ display: none; }}
 .chart-bar-fail {{ background: rgba(211, 47, 47, 0.08); }}
-.chart-fail-dot {{ position: absolute; top: -4px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; border-radius: 50%; background: #d32f2f; z-index: 3; }}
 .chart-legend-sep {{ width: 1px; height: 16px; background: #ccc; margin: 0 8px; display: inline-block; vertical-align: middle; }}
 .chart-calls-legend {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; font-size: 12px; color: #555; }}
 .chart-calls-legend-item {{ display: flex; align-items: center; gap: 4px; }}
@@ -1046,14 +1044,14 @@ SESSION_DETAIL_TEMPLATE = """
                 const tool = el.dataset.tool;
                 const total = el.dataset.total;
                 const tc = el.dataset.toolCount || '0';
-                const fail = el.dataset.hasFailure === '1';
+                const fc = parseInt(el.dataset.failCount) || 0;
                 tt.innerHTML = `
                     <div class="tt-name">#${{seq}}</div>
                     <div class="tt-row"><span class="tt-label">LLM Time</span><span class="tt-value">${{llm}}</span></div>
                     <div class="tt-row"><span class="tt-label">Tool Time</span><span class="tt-value">${{tool}}</span></div>
                     <div class="tt-row"><span class="tt-label">Total</span><span class="tt-value">${{total}}</span></div>
                     <div class="tt-row"><span class="tt-label">Tool Calls</span><span class="tt-value">${{tc}}</span></div>
-                    ${{fail ? '<div class="tt-row" style="color:#d32f2f"><span class="tt-label">Status</span><span class="tt-value">Failed</span></div>' : ''}}
+                    ${{fc > 0 ? '<div class="tt-row" style="color:#d32f2f"><span class="tt-label">Failed</span><span class="tt-value">' + fc + '</span></div>' : ''}}
                 `;
             }}
             tt.style.left = (event.clientX + 12) + 'px';
