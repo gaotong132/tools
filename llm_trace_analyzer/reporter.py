@@ -1312,6 +1312,7 @@ class HTMLReporter:
 
             tool_count, fail_count = iter_info.get((t.session_id, t.iteration_num), (0, 0))
             fail_cls = " chart-bar-fail" if fail_count > 0 else ""
+            fail_mark = '<span class="chart-fail-bar"></span>' if fail_count > 0 else ""
 
             bars.append(
                 f'<div class="chart-bar-col" '
@@ -1324,7 +1325,7 @@ class HTMLReporter:
                 f'<div class="chart-bar{fail_cls}" style="height:{chart_height}px">'
                 f'<div class="chart-bar-tool" style="height:{tool_h:.1f}px"></div>'
                 f'<div class="chart-bar-llm" style="height:{llm_h:.1f}px"></div>'
-                f"</div></div>"
+                f"</div>{fail_mark}</div>"
             )
 
         # Pxx 参考线（默认隐藏）

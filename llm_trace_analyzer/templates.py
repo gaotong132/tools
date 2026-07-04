@@ -204,6 +204,7 @@ INDEX_TEMPLATE = """
 .timing-chart-wrapper.overlay-mode-pxx .chart-tc-svg {{ display: none; }}
 .timing-chart-wrapper.overlay-mode-pxx .chart-tool-count {{ display: none; }}
 .chart-bar-fail {{ background: rgba(211, 47, 47, 0.08); }}
+.chart-fail-bar {{ position: absolute; top: -3px; left: 10%; width: 80%; height: 2px; background: #d32f2f; border-radius: 1px; z-index: 3; }}
 .chart-legend-sep {{ width: 1px; height: 16px; background: #ccc; margin: 0 8px; display: inline-block; vertical-align: middle; }}
 .chart-calls-legend {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; font-size: 12px; color: #555; }}
 .chart-calls-legend-item {{ display: flex; align-items: center; gap: 4px; }}
@@ -878,6 +879,7 @@ SESSION_DETAIL_TEMPLATE = """
 .timing-chart-wrapper.overlay-mode-pxx .chart-tc-svg {{ display: none; }}
 .timing-chart-wrapper.overlay-mode-pxx .chart-tool-count {{ display: none; }}
 .chart-bar-fail {{ background: rgba(211, 47, 47, 0.08); }}
+.chart-fail-bar {{ position: absolute; top: -3px; left: 10%; width: 80%; height: 2px; background: #d32f2f; border-radius: 1px; z-index: 3; }}
 .chart-legend-sep {{ width: 1px; height: 16px; background: #ccc; margin: 0 8px; display: inline-block; vertical-align: middle; }}
 .chart-calls-legend {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; font-size: 12px; color: #555; }}
 .chart-calls-legend-item {{ display: flex; align-items: center; gap: 4px; }}
