@@ -1251,8 +1251,21 @@ class HTMLReporter:
                             resp.tool_calls
                         )
 
-                # 构建 (session_id, request_timestamp) -> has_failure 映射
-                ts_fail: set = set()
+                # 收集每个 session 的 response timestamps（排序后用于二分查找）
+                from bisect import bisect_right
+
+                resp_ts_by_sid: Dict[str, List[float]] = {}
+                for resp in chain.responses:
+                    if resp.timestamp > 0:
+                        sid = resp.session_id
+                        if sid not in resp_ts_by_sid:
+                            resp_ts_by_sid[sid] = []
+                        resp_ts_by_sid[sid].append(round(resp.timestamp, 3))
+                for sid in resp_ts_by_sid:
+                    resp_ts_by_sid[sid].sort()
+
+                # 构建失败的 request timestamps
+                fail_req_ts: Dict[str, List[float]] = {}
                 seen_ids: set = set()
                 for req in chain.requests:
                     for msg in req.body.get("messages", []):
@@ -1264,16 +1277,25 @@ class HTMLReporter:
                         seen_ids.add(tc_id)
                         content = msg.get("content", "")
                         if isinstance(content, str) and detect_tool_failure(content)[0]:
-                            ts_fail.add((req.session_id, round(req.timestamp, 3)))
+                            sid = req.session_id
+                            if sid not in fail_req_ts:
+                                fail_req_ts[sid] = []
+                            fail_req_ts[sid].append(round(req.timestamp, 3))
 
-                # 按 timing 的 iteration_num 存储（key 用 timing 的 session_id + iteration_num）
+                # 将失败归属到触发工具调用的 response（最近的 preceding response）
+                fail_resp_ts: set = set()
+                for sid, fail_ts_list in fail_req_ts.items():
+                    sorted_resp_ts = resp_ts_by_sid.get(sid, [])
+                    for fts in fail_ts_list:
+                        idx = bisect_right(sorted_resp_ts, fts) - 1
+                        if idx >= 0:
+                            fail_resp_ts.add((sid, sorted_resp_ts[idx]))
+
+                # 按 timing 的 iteration_num 存储
                 for t in chain.iteration_timings:
                     resp_ts = round(t.response_timestamp, 3)
                     tool_count = ts_tool_count.get((t.session_id, resp_ts), 0)
-                    # 查找对应的 request timestamp 来判断 failure
-                    # timing 的 request_timestamp 对应下一个 request，用它来查 failure
-                    req_ts = round(t.request_timestamp, 3)
-                    has_fail = (t.session_id, req_ts) in ts_fail
+                    has_fail = (t.session_id, resp_ts) in fail_resp_ts
                     iter_info[(t.session_id, t.iteration_num)] = (tool_count, has_fail)
 
         chart_height = 200
@@ -1291,7 +1313,12 @@ class HTMLReporter:
             fail_cls = " chart-bar-fail" if has_failure else ""
             count_html = ""
             if tool_count > 0 and tool_h > 2:
-                count_html = f'<span class="chart-tool-count">{tool_count}</span>'
+                count_html = (
+                    f'<span class="chart-tool-count">'
+                    f'<span class="chart-tc-line"></span>'
+                    f'<span class="chart-tc-num">{tool_count}</span>'
+                    f"</span>"
+                )
 
             bars.append(
                 f'<div class="chart-bar-col" '
