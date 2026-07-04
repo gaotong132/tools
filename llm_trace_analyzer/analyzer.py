@@ -13,6 +13,7 @@ from .models import (
     SystemMetrics,
     pair_requests_responses,
 )
+from .tool_errors import detect_tool_failure
 
 
 class ChainAnalyzer:
@@ -280,7 +281,9 @@ class ChainAnalyzer:
                         # 如果 response 包含 spawn_subagent，排除 subAgent 运行时间
                         if self._has_spawn_subagent(resp):
                             # 只计算框架处理时间（response 到 subAgent 启动）
-                            spawn_overhead = self._get_spawn_overhead(resp.timestamp, timing.session_id)
+                            spawn_overhead = self._get_spawn_overhead(
+                                resp.timestamp, timing.session_id
+                            )
                             timing.tool_processing_duration = min(spawn_overhead, gap)
                         else:
                             timing.tool_processing_duration = gap
@@ -457,6 +460,48 @@ class ChainAnalyzer:
             return session_id  # 整个 session_id 作为 task_id
         return None
 
+    @staticmethod
+    def _detect_tool_failures(chains: List[LLMChain]) -> Dict[str, Dict[str, int]]:
+        """检测工具执行失败。
+
+        扫描每次迭代的 request 消息中 role='tool' 的结果，
+        通过 tool_errors.detect_tool_failure 匹配错误模式。
+
+        Returns:
+            {tool_name: {"failed": count}, ...}
+        """
+        failures: Dict[str, Dict[str, int]] = {}
+
+        for chain in chains:
+            # 从 responses 构建 tool_call_id -> tool_name 映射
+            tc_name_map: Dict[str, str] = {}
+            for resp in chain.responses:
+                for tc in resp.tool_calls:
+                    tc_id = tc.get("id", "")
+                    name = ChainAnalyzer._extract_tool_name(tc)
+                    if tc_id and name:
+                        tc_name_map[tc_id] = name
+
+            # 扫描 requests 中的 tool result 消息（去重 by tool_call_id）
+            seen_ids: set = set()
+            for req in chain.requests:
+                for msg in req.body.get("messages", []):
+                    if msg.get("role") != "tool":
+                        continue
+                    tc_id = msg.get("tool_call_id", "")
+                    if tc_id in seen_ids:
+                        continue
+                    seen_ids.add(tc_id)
+
+                    name = tc_name_map.get(tc_id, "unknown")
+                    content = msg.get("content", "")
+                    if isinstance(content, str) and detect_tool_failure(content)[0]:
+                        if name not in failures:
+                            failures[name] = {"failed": 0}
+                        failures[name]["failed"] += 1
+
+        return failures
+
     def _compute_statistics(self, sessions: Dict[str, LLMChain]) -> Statistics:
         stats = Statistics()
 
@@ -532,6 +577,15 @@ class ChainAnalyzer:
         stats.tool_call_counts = dict(sorted(tool_call_counts.items(), key=lambda x: -x[1]))
         stats.total_tool_calls = sum(tool_call_counts.values())
 
+        # 工具失败统计
+        all_chains = list(sessions.values())
+        tool_failures = self._detect_tool_failures(all_chains)
+        stats.tool_failure_counts = {
+            name: data["failed"]
+            for name, data in sorted(tool_failures.items(), key=lambda x: -x[1]["failed"])
+        }
+        stats.failed_tool_calls = sum(stats.tool_failure_counts.values())
+
         # 计算平均值
         if total_iterations_count > 0:
             stats.avg_llm_time_seconds = total_llm_time / total_iterations_count
@@ -546,23 +600,34 @@ class ChainAnalyzer:
             s_reasoning_chars = sum(len(r.reasoning_content or "") for r in chain.responses)
             s_content_chars = sum(len(r.content or "") for r in chain.responses)
             iters = chain.total_iterations
-            total_time = (chain.end_time - chain.start_time) if chain.end_time and chain.start_time else 0
-            stats.session_stats.append({
-                "session_id": chain.session_id,
-                "model": chain.model_name,
-                "iterations": iters,
-                "total_time": total_time,
-                "llm_time": chain.total_llm_duration_seconds,
-                "tool_time": chain.total_tool_duration_seconds,
-                "avg_llm_time": chain.total_llm_duration_seconds / iters if iters > 0 else 0,
-                "avg_tool_time": chain.total_tool_duration_seconds / iters if iters > 0 else 0,
-                "tokens": s_tokens,
-                "output_tokens": s_output_tokens,
-                "cache_tokens": s_cache_tokens,
-                "tokens_per_sec": s_output_tokens / chain.total_llm_duration_seconds if chain.total_llm_duration_seconds > 0 else 0,
-                "reasoning_chars": s_reasoning_chars,
-                "content_chars": s_content_chars,
-                "tool_calls": s_tool_calls,
-            })
+            total_time = (
+                (chain.end_time - chain.start_time) if chain.end_time and chain.start_time else 0
+            )
+            s_failures = self._detect_tool_failures([chain])
+            s_failed = sum(d["failed"] for d in s_failures.values())
+            stats.session_stats.append(
+                {
+                    "session_id": chain.session_id,
+                    "model": chain.model_name,
+                    "iterations": iters,
+                    "total_time": total_time,
+                    "llm_time": chain.total_llm_duration_seconds,
+                    "tool_time": chain.total_tool_duration_seconds,
+                    "avg_llm_time": chain.total_llm_duration_seconds / iters if iters > 0 else 0,
+                    "avg_tool_time": chain.total_tool_duration_seconds / iters if iters > 0 else 0,
+                    "tokens": s_tokens,
+                    "output_tokens": s_output_tokens,
+                    "cache_tokens": s_cache_tokens,
+                    "tokens_per_sec": (
+                        s_output_tokens / chain.total_llm_duration_seconds
+                        if chain.total_llm_duration_seconds > 0
+                        else 0
+                    ),
+                    "reasoning_chars": s_reasoning_chars,
+                    "content_chars": s_content_chars,
+                    "tool_calls": s_tool_calls,
+                    "failed_tool_calls": s_failed,
+                }
+            )
 
         return stats

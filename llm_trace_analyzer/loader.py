@@ -27,7 +27,7 @@ LOG_LINE_PATTERN = re.compile(
     r"\[\d+\]\s+DEBUG\s+.*?"
     r"\[LLM_IO_TRACE\]\s+" + _TRACE_BODY_PATTERN
 )
-ROLLOVER_PATTERN = re.compile(r'^full_\d{8}_\d{6}\.log$')
+ROLLOVER_PATTERN = re.compile(r"^full_\d{8}_\d{6}\.log$")
 
 
 def find_rollover_files(log_path: Path) -> List[Path]:
@@ -43,9 +43,9 @@ def find_rollover_files(log_path: Path) -> List[Path]:
 
     # 查找所有匹配 full_YYYYMMDD_HHMMSS.log 或 full.log 的文件
     all_files = []
-    for file_path in parent_dir.glob('full*.log'):
+    for file_path in parent_dir.glob("full*.log"):
         # 只匹配 full.log 或 full_YYYYMMDD_HHMMSS.log
-        if file_path.name == 'full.log' or ROLLOVER_PATTERN.match(file_path.name):
+        if file_path.name == "full.log" or ROLLOVER_PATTERN.match(file_path.name):
             all_files.append(file_path)
 
     # 按文件名排序（时间戳在文件名中，排序后即为时间顺序）
@@ -80,13 +80,13 @@ class LogLoader:
                 continue
 
         # 按时间戳排序
-        all_traces.sort(key=lambda t: t.get('timestamp', 0))
+        all_traces.sort(key=lambda t: t.get("timestamp", 0))
 
         return all_traces
 
     def _load_single_file(self, file_path: Path) -> List[Dict[str, Any]]:
         """加载单个日志文件"""
-        with open(file_path, encoding='utf-8', errors='replace') as f:
+        with open(file_path, encoding="utf-8", errors="replace") as f:
             if file_path.suffix == ".json":
                 return self._parse_json_file(f)
             else:

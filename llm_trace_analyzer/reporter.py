@@ -41,6 +41,7 @@ from .templates import (
     TOOL_RESULT_TEMPLATE,
     TOOLS_SECTION_TEMPLATE,
 )
+from .tool_errors import detect_tool_failure
 
 
 class HTMLReporter:
@@ -90,7 +91,7 @@ class HTMLReporter:
                     if m:
                         try:
                             # 匹配到包含 content 字段的 JSON 片段, 尝试完整解析
-                            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                            json_match = re.search(r"\{.*\}", content, re.DOTALL)
                             if json_match:
                                 obj = json.loads(json_match.group())
                                 extracted = obj.get("content", "")
@@ -239,8 +240,12 @@ class HTMLReporter:
             return ""
 
         # 使用非零时间戳计算 session 范围，避免 timestamp=0 导致定位错误
-        non_zero_starts = [t.request_timestamp for t in chain.iteration_timings if t.request_timestamp > 0]
-        non_zero_ends = [t.response_timestamp for t in chain.iteration_timings if t.response_timestamp > 0]
+        non_zero_starts = [
+            t.request_timestamp for t in chain.iteration_timings if t.request_timestamp > 0
+        ]
+        non_zero_ends = [
+            t.response_timestamp for t in chain.iteration_timings if t.response_timestamp > 0
+        ]
         session_start = min(non_zero_starts) if non_zero_starts else chain.start_time
         session_end = max(non_zero_ends) if non_zero_ends else chain.end_time
         total_span = max(session_end - session_start, 0.001)
@@ -261,8 +266,7 @@ class HTMLReporter:
         # 构建排序顺序（Main 穿插 subAgent，同 agent 连续）
         parent_timings = timings_by_session.get(chain.session_id, [])
         parent_resp_times = sorted(
-            [(t.iteration_num, t.response_timestamp) for t in parent_timings],
-            key=lambda x: x[1]
+            [(t.iteration_num, t.response_timestamp) for t in parent_timings], key=lambda x: x[1]
         )
 
         def find_spawn_parent(start_time: float) -> int:
@@ -285,9 +289,15 @@ class HTMLReporter:
                     spawn_parent_by_session[sid] = find_spawn_parent(timing.request_timestamp)
 
         # 对仍无 spawn_parent 的 subAgent，找其首个非零 timing
-        for sid in {t.session_id for t in chain.iteration_timings if t.session_id != chain.session_id}:
+        for sid in {
+            t.session_id for t in chain.iteration_timings if t.session_id != chain.session_id
+        }:
             if sid not in spawn_parent_by_session:
-                non_zero = [t for t in chain.iteration_timings if t.session_id == sid and t.request_timestamp > 0]
+                non_zero = [
+                    t
+                    for t in chain.iteration_timings
+                    if t.session_id == sid and t.request_timestamp > 0
+                ]
                 if non_zero:
                     spawn_parent_by_session[sid] = find_spawn_parent(non_zero[0].request_timestamp)
                 else:
@@ -304,7 +314,7 @@ class HTMLReporter:
         # 将 Main 的 iterations 按 spawn 点切分成段
         main_timings = sorted(
             [t for t in chain.iteration_timings if t.session_id == chain.session_id],
-            key=lambda t: t.iteration_num
+            key=lambda t: t.iteration_num,
         )
         # spawn 点：哪些 Main iteration 后面有 subAgent
         # 合并连续的 spawn_points（如 12,13 → 只保留 13），避免把连续 Main 迭代拆碎
@@ -383,9 +393,14 @@ class HTMLReporter:
             # === Agent 级别摘要 bar ===
             if agent_timings:
                 # 使用非零时间戳计算位置
-                valid_starts = [t.request_timestamp for t in agent_timings if t.request_timestamp > 0]
-                valid_ends = [t.response_timestamp + (t.tool_processing_duration or 0)
-                              for t in agent_timings if t.response_timestamp > 0]
+                valid_starts = [
+                    t.request_timestamp for t in agent_timings if t.request_timestamp > 0
+                ]
+                valid_ends = [
+                    t.response_timestamp + (t.tool_processing_duration or 0)
+                    for t in agent_timings
+                    if t.response_timestamp > 0
+                ]
                 if valid_starts and valid_ends:
                     a_start = min(valid_starts)
                     a_end = max(valid_ends)
@@ -397,26 +412,32 @@ class HTMLReporter:
                     segments: List[str] = []
                     for t in agent_timings:
                         llm_w = max((t.llm_call_duration / a_span) * 100, 0.3)
-                        segments.append(f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.2f}%"></div>')
+                        segments.append(
+                            f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.2f}%"></div>'
+                        )
                         if t.tool_processing_duration > 0:
                             tool_w = max((t.tool_processing_duration / a_span) * 100, 0.8)
-                            segments.append(f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.2f}%"></div>')
+                            segments.append(
+                                f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.2f}%"></div>'
+                            )
 
                     agent_resps = [r for r in chain.responses if r.session_id == lookup_sid]
                     tooltip = self._tooltip_data(agent_timings, agent_label, responses=agent_resps)
                     iter_count = len(agent_timings)
 
-                    rows.append(self._gantt_row_html(
-                        label=f"{agent_label} ({iter_count})",
-                        tree_prefix="",
-                        depth=0,
-                        left_pct=bar_left,
-                        width_pct=bar_width,
-                        segments_html="".join(segments),
-                        first_global=agent_timings[0].iteration_num,
-                        tooltip_data=tooltip,
-                        expandable_id=expand_id,
-                    ))
+                    rows.append(
+                        self._gantt_row_html(
+                            label=f"{agent_label} ({iter_count})",
+                            tree_prefix="",
+                            depth=0,
+                            left_pct=bar_left,
+                            width_pct=bar_width,
+                            segments_html="".join(segments),
+                            first_global=agent_timings[0].iteration_num,
+                            tooltip_data=tooltip,
+                            expandable_id=expand_id,
+                        )
+                    )
 
             # === 展开内容：逐 iteration 细节行 ===
             # 构建该 agent 的 response 查找表（按 response_timestamp 匹配）
@@ -447,7 +468,9 @@ class HTMLReporter:
                 segs = [f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.1f}%"></div>']
                 if timing.tool_processing_duration > 0:
                     tool_w = max((timing.tool_processing_duration / iter_span) * 100, 0.8)
-                    segs.append(f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.1f}%"></div>')
+                    segs.append(
+                        f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.1f}%"></div>'
+                    )
 
                 # 构建标签：#N + tool calls + content 摘要
                 label_text = f"#{local_num}"
@@ -473,12 +496,14 @@ class HTMLReporter:
                         preview = resp.content[:40].replace("\n", " ").strip()
                         if len(resp.content) > 40:
                             preview += "..."
-                        label_text += f'  {preview}'
+                        label_text += f"  {preview}"
 
                 # LLM/Tool 百分比
                 iter_total = timing.llm_call_duration + timing.tool_processing_duration
                 llm_pct = (timing.llm_call_duration / iter_total * 100) if iter_total > 0 else 0
-                tool_pct = (timing.tool_processing_duration / iter_total * 100) if iter_total > 0 else 0
+                tool_pct = (
+                    (timing.tool_processing_duration / iter_total * 100) if iter_total > 0 else 0
+                )
 
                 # 字数统计
                 reasoning_chars = len(resp.reasoning_content or "") if resp else 0
@@ -507,21 +532,23 @@ class HTMLReporter:
                     "cache-tokens": str(resp.cache_tokens if resp else 0),
                 }
 
-                detail_rows.append(self._gantt_row_html(
-                    label=label_text,
-                    label_title=full_content,
-                    tree_prefix="",
-                    depth=0,
-                    left_pct=i_left,
-                    width_pct=i_width,
-                    segments_html="".join(segs),
-                    first_global=timing.iteration_num,
-                    tooltip_data=detail_tooltip,
-                ))
+                detail_rows.append(
+                    self._gantt_row_html(
+                        label=label_text,
+                        label_title=full_content,
+                        tree_prefix="",
+                        depth=0,
+                        left_pct=i_left,
+                        width_pct=i_width,
+                        segments_html="".join(segs),
+                        first_global=timing.iteration_num,
+                        tooltip_data=detail_tooltip,
+                    )
+                )
 
             rows.append(f'<div class="gantt-expand-content" id="{expand_id}" style="display:none">')
             rows.extend(detail_rows)
-            rows.append('</div>')
+            rows.append("</div>")
 
         return GANTT_PANEL_TEMPLATE.format(
             agent_count=len(timeline_entries),
@@ -530,9 +557,15 @@ class HTMLReporter:
         )
 
     def _gantt_row_html(
-        self, label: str, tree_prefix: str, depth: int,
-        left_pct: float, width_pct: float, segments_html: str,
-        first_global: int, tooltip_data: Dict,
+        self,
+        label: str,
+        tree_prefix: str,
+        depth: int,
+        left_pct: float,
+        width_pct: float,
+        segments_html: str,
+        first_global: int,
+        tooltip_data: Dict,
         expandable_id: str = "",
         label_title: str = "",
     ) -> str:
@@ -542,17 +575,17 @@ class HTMLReporter:
         if expandable_id:
             expand_btn = (
                 f'<button class="gantt-expand-btn" '
-                f'onclick="event.stopPropagation();toggleGanttExpand(\'{expandable_id}\', this)" '
+                f"onclick=\"event.stopPropagation();toggleGanttExpand('{expandable_id}', this)\" "
                 f'title="展开详情">&#9654;</button>'
             )
         title_attr = f' title="{html.escape(label_title)}"' if label_title else ""
         return (
             f'<div class="gantt-row">'
             f'<div class="gantt-label" style="padding-left:{depth * 16}px"{title_attr}>'
-            f'{expand_btn}'
+            f"{expand_btn}"
             f'<span class="gantt-tree">{html.escape(tree_prefix)}</span>'
-            f'{html.escape(label)}'
-            f'</div>'
+            f"{html.escape(label)}"
+            f"</div>"
             f'<div class="gantt-track">'
             f'<div class="gantt-bar depth-{depth_class}" '
             f'style="left:{left_pct:.1f}%;width:{width_pct:.1f}%" '
@@ -561,12 +594,13 @@ class HTMLReporter:
             f'onmouseenter="showGanttTooltip(event, this)" '
             f'onmousemove="moveGanttTooltip(event)" '
             f'onmouseleave="hideGanttTooltip()">'
-            f'{segments_html}'
-            f'</div></div></div>'
+            f"{segments_html}"
+            f"</div></div></div>"
         )
 
-    def _tooltip_data(self, timings, label: str, start_ts: float = 0, end_ts: float = 0,
-                      responses: List = None) -> Dict:
+    def _tooltip_data(
+        self, timings, label: str, start_ts: float = 0, end_ts: float = 0, responses: List = None
+    ) -> Dict:
         llm = sum(t.llm_call_duration for t in timings)
         tool = sum(t.tool_processing_duration for t in timings)
         total = llm + tool
@@ -654,8 +688,7 @@ class HTMLReporter:
         # 找到每个 subagent 被哪个 parent 迭代 spawn（通过 start_time 匹配 parent response）
         parent_timings = timings_by_session.get(chain.session_id, [])
         parent_resp_times = sorted(
-            [(t.iteration_num, t.response_timestamp) for t in parent_timings],
-            key=lambda x: x[1]
+            [(t.iteration_num, t.response_timestamp) for t in parent_timings], key=lambda x: x[1]
         )
 
         def find_spawn_parent(start_time: float) -> int:
@@ -737,7 +770,9 @@ class HTMLReporter:
             parts = session_id.split("_fork_agent_")
             partial_parent = parts[0]
             # 找到完整匹配的 session
-            all_sessions = {r.session_id for r in chain.requests} | {r.session_id for r in chain.responses}
+            all_sessions = {r.session_id for r in chain.requests} | {
+                r.session_id for r in chain.responses
+            }
             for sid in all_sessions:
                 if sid == partial_parent or sid.endswith(partial_parent):
                     return sid
@@ -750,8 +785,12 @@ class HTMLReporter:
     def _render_agent_flow(self, session_id: str, chain: LLMChain) -> str:
         """渲染一个 Agent 的完整流程：迭代 + 内嵌的 subAgent 块"""
         # 获取该 session 的请求和响应
-        reqs = sorted([r for r in chain.requests if r.session_id == session_id], key=lambda r: r.timestamp)
-        resps = sorted([r for r in chain.responses if r.session_id == session_id], key=lambda r: r.timestamp)
+        reqs = sorted(
+            [r for r in chain.requests if r.session_id == session_id], key=lambda r: r.timestamp
+        )
+        resps = sorted(
+            [r for r in chain.responses if r.session_id == session_id], key=lambda r: r.timestamp
+        )
 
         # 按 iteration 配对
         paired: Dict[int, Dict] = {}
@@ -864,7 +903,11 @@ class HTMLReporter:
     def _render_subagent_block(self, subagent, chain: LLMChain) -> str:
         """渲染单个 subAgent 的折叠块"""
         depth_class = str(min(subagent.depth, 2))
-        label = subagent.chain_path[-1] if subagent.chain_path else self._short_session_id(subagent.session_id)
+        label = (
+            subagent.chain_path[-1]
+            if subagent.chain_path
+            else self._short_session_id(subagent.session_id)
+        )
         duration = self._format_duration(subagent.end_time - subagent.start_time)
 
         # 递归渲染 subAgent 的流程
@@ -893,20 +936,24 @@ class HTMLReporter:
             active_class = " active" if i == 0 else ""
             iter_count = len([r for r in chain.requests if r.session_id == sa.session_id])
 
-            buttons.append(TAB_BUTTON_TEMPLATE.format(
-                agent_key=agent_key,
-                label=label,
-                iteration_count=iter_count,
-                active_class=active_class,
-            ))
+            buttons.append(
+                TAB_BUTTON_TEMPLATE.format(
+                    agent_key=agent_key,
+                    label=label,
+                    iteration_count=iter_count,
+                    active_class=active_class,
+                )
+            )
 
             content_html = self._render_agent_flow(sa.session_id, chain)
-            panels.append(TAB_PANEL_TEMPLATE.format(
-                agent_key=agent_key,
-                active_class=active_class,
-                timing_list_html="",
-                iterations_html=content_html,
-            ))
+            panels.append(
+                TAB_PANEL_TEMPLATE.format(
+                    agent_key=agent_key,
+                    active_class=active_class,
+                    timing_list_html="",
+                    iterations_html=content_html,
+                )
+            )
 
         tab_nav_html = TAB_NAV_TEMPLATE.format(tab_buttons_html="\n".join(buttons))
         tab_content_html = TAB_CONTENT_WRAPPER_TEMPLATE.format(tab_panels_html="\n".join(panels))
@@ -1182,7 +1229,10 @@ class HTMLReporter:
         if not timings:
             return ""
 
-        sorted_timings = sorted(timings, key=lambda t: t.request_timestamp if t.request_timestamp > 0 else t.response_timestamp)
+        sorted_timings = sorted(
+            timings,
+            key=lambda t: t.request_timestamp if t.request_timestamp > 0 else t.response_timestamp,
+        )
         max_total = max(t.llm_call_duration + t.tool_processing_duration for t in sorted_timings)
         if max_total <= 0:
             return ""
@@ -1207,15 +1257,22 @@ class HTMLReporter:
                 f'<div class="chart-bar" style="height:{chart_height}px">'
                 f'<div class="chart-bar-tool" style="height:{tool_h:.1f}px"></div>'
                 f'<div class="chart-bar-llm" style="height:{llm_h:.1f}px"></div>'
-                f'</div></div>'
+                f"</div></div>"
             )
 
         # 初始 Pxx（LLM+Tool 叠加）
-        all_totals = sorted(t.llm_call_duration + t.tool_processing_duration for t in sorted_timings)
+        all_totals = sorted(
+            t.llm_call_duration + t.tool_processing_duration for t in sorted_timings
+        )
         pxx_lines: List[str] = []
         pxx_legend_items: List[str] = []
         pxx_colors = {"p50": "#66bb6a", "p90": "#ffa726", "p95": "#ef5350", "p99": "#ab47bc"}
-        for label, cls, p in [("P50", "p50", 50), ("P90", "p90", 90), ("P95", "p95", 95), ("P99", "p99", 99)]:
+        for label, cls, p in [
+            ("P50", "p50", 50),
+            ("P90", "p90", 90),
+            ("P95", "p95", 95),
+            ("P99", "p99", 99),
+        ]:
             val = self._percentile(all_totals, p)
             bottom_pct = (val / max_total) * 100 if max_total > 0 else 0
             color = pxx_colors[cls]
@@ -1225,7 +1282,7 @@ class HTMLReporter:
             pxx_legend_items.append(
                 f'<span class="chart-pxx-legend-item chart-pxx-{cls}">'
                 f'<span class="chart-pxx-legend-line" style="border-top-color:{color}"></span>'
-                f'{label}: <strong>{self._format_duration(val)}</strong></span>'
+                f"{label}: <strong>{self._format_duration(val)}</strong></span>"
             )
 
         chart_id = f"chart_{id(timings) % 10000}"
@@ -1238,15 +1295,13 @@ class HTMLReporter:
             f'<div class="chart-legend-color chart-legend-llm"></div>LLM Time</div>'
             f'<div class="chart-legend-item chart-toggle active" data-series="tool" onclick="toggleChartSeries(this)">'
             f'<div class="chart-legend-color chart-legend-tool"></div>Tool Time</div>'
-            '</div>'
+            "</div>"
             f'<div class="timing-chart{dense_class}">{"".join(bars)}{"".join(pxx_lines)}</div>'
             f'<div class="chart-pxx-legend">{"".join(pxx_legend_items)}</div>'
-            '</div>'
+            "</div>"
         )
 
-    def _render_token_chart(
-        self, chain: LLMChain, session_id: Optional[str] = None
-    ) -> str:
+    def _render_token_chart(self, chain: LLMChain, session_id: Optional[str] = None) -> str:
         """渲染单个 Agent 的 Token 分布堆叠柱状图。
 
         Input 在下（逐步增长），Output 在上，叠加 LLM 推理时长折线和平均线。
@@ -1275,13 +1330,15 @@ class HTMLReporter:
         chart_data: List[Dict] = []
         for i, resp in enumerate(sorted_resps, 1):
             llm_dur = dur_lookup.get(round(resp.timestamp, 3), 0.0)
-            chart_data.append({
-                "seq": i,
-                "input": resp.input_tokens,
-                "output": resp.output_tokens,
-                "total": resp.input_tokens + resp.output_tokens,
-                "llm_duration": llm_dur,
-            })
+            chart_data.append(
+                {
+                    "seq": i,
+                    "input": resp.input_tokens,
+                    "output": resp.output_tokens,
+                    "total": resp.input_tokens + resp.output_tokens,
+                    "llm_duration": llm_dur,
+                }
+            )
 
         if not chart_data:
             return ""
@@ -1336,7 +1393,7 @@ class HTMLReporter:
                 f'<div class="chart-bar" style="height:{chart_height}px">'
                 f'<div class="chart-bar-output" style="height:{output_h:.1f}px"></div>'
                 f'<div class="chart-bar-input" style="height:{input_h:.1f}px"></div>'
-                f'</div></div>'
+                f"</div></div>"
             )
 
             # 推理时长折线坐标
@@ -1368,16 +1425,16 @@ class HTMLReporter:
             f'<div class="chart-legend-color chart-legend-output"></div>Output Tokens</div>'
             f'<div class="chart-legend-item">'
             f'<span class="chart-legend-line-solid"></span> LLM Duration</div>'
-            '</div>'
+            "</div>"
             f'<div class="timing-chart{dense_class}">'
             f'{"".join(bars)}'
-            f'{svg_line}'
-            f'</div>'
+            f"{svg_line}"
+            f"</div>"
             f'<div class="chart-pxx-legend">'
             f'<span class="chart-pxx-legend-item">Avg Input: <strong>{avg_input:,.0f}</strong></span>'
             f'<span class="chart-pxx-legend-item">Avg Output: <strong>{avg_output:,.0f}</strong></span>'
-            f'</div>'
-            '</div>'
+            f"</div>"
+            "</div>"
         )
 
     def _render_token_charts_section(self, chain: LLMChain) -> str:
@@ -1391,8 +1448,10 @@ class HTMLReporter:
 
         # 有子 Agent：用轻量级 agent 选择器
         agents = [("Main", chain.session_id)] + [
-            (sa.chain_path[-1] if sa.chain_path else self._short_session_id(sa.session_id),
-             sa.session_id)
+            (
+                sa.chain_path[-1] if sa.chain_path else self._short_session_id(sa.session_id),
+                sa.session_id,
+            )
             for sa in sorted(chain.subagents, key=lambda s: s.start_time)
         ]
 
@@ -1410,12 +1469,11 @@ class HTMLReporter:
 
             pills.append(
                 f'<span class="token-agent-pill{active}" '
-                f'onclick="switchTokenAgent(\'{section_id}\', {len(pills)})">'
+                f"onclick=\"switchTokenAgent('{section_id}', {len(pills)})\">"
                 f'{label} <span class="pill-count">{iter_count}</span></span>'
             )
             charts.append(
-                f'<div class="token-agent-chart" style="display:{display}">'
-                f'{chart_html}</div>'
+                f'<div class="token-agent-chart" style="display:{display}">' f"{chart_html}</div>"
             )
 
         if not pills:
@@ -1425,21 +1483,26 @@ class HTMLReporter:
             f'<div class="token-agent-selector" id="{section_id}">'
             f'<div class="token-agent-pills">{"".join(pills)}</div>'
             f'<div class="token-agent-charts">{"".join(charts)}</div>'
-            f'</div>'
+            f"</div>"
         )
 
-    def _compute_per_tool_stats(self, chains: List[LLMChain]) -> Dict[str, Dict]:
-        """计算每个工具的调用次数、总耗时、平均耗时。
+    def _compute_per_tool_stats(
+        self, chains: List[LLMChain], failure_counts: Optional[Dict[str, int]] = None
+    ) -> Dict[str, Dict]:
+        """计算每个工具的调用次数、总耗时、平均耗时、失败次数。
 
         将每次迭代的 tool_processing_duration 均分给该迭代的所有工具调用。
         通过 (session_id, response_timestamp) 匹配 timing 与 response。
+        failure_counts: {tool_name: fail_count} 来自 analyzer 的失败检测。
         """
         per_tool: Dict[str, Dict] = {}
         for chain in chains:
             timing_map: Dict[tuple, float] = {}
             for t in chain.iteration_timings:
                 if t.response_timestamp > 0:
-                    timing_map[(t.session_id, round(t.response_timestamp, 3))] = t.tool_processing_duration
+                    timing_map[(t.session_id, round(t.response_timestamp, 3))] = (
+                        t.tool_processing_duration
+                    )
             for resp in chain.responses:
                 if not resp.tool_calls:
                     continue
@@ -1454,7 +1517,39 @@ class HTMLReporter:
                     per_tool[name]["total_time"] += per_call
         for v in per_tool.values():
             v["avg_time"] = v["total_time"] / v["count"] if v["count"] > 0 else 0
+        # 合并失败计数
+        if failure_counts:
+            for name in per_tool:
+                per_tool[name]["failed"] = failure_counts.get(name, 0)
         return dict(sorted(per_tool.items(), key=lambda x: -x[1]["count"]))
+
+    @staticmethod
+    def _detect_chain_failures(chain: LLMChain) -> Dict[str, int]:
+        """检测单个 chain 的工具失败次数。返回 {tool_name: fail_count}。"""
+        # 从 responses 构建 tool_call_id -> tool_name 映射
+        tc_name_map: Dict[str, str] = {}
+        for resp in chain.responses:
+            for tc in resp.tool_calls:
+                tc_id = tc.get("id", "")
+                name = tc.get("name", "") or tc.get("function", {}).get("name", "")
+                if tc_id and name:
+                    tc_name_map[tc_id] = name
+
+        failures: Dict[str, int] = {}
+        seen_ids: set = set()
+        for req in chain.requests:
+            for msg in req.body.get("messages", []):
+                if msg.get("role") != "tool":
+                    continue
+                tc_id = msg.get("tool_call_id", "")
+                if tc_id in seen_ids:
+                    continue
+                seen_ids.add(tc_id)
+                content = msg.get("content", "")
+                if isinstance(content, str) and detect_tool_failure(content)[0]:
+                    name = tc_name_map.get(tc_id, "unknown")
+                    failures[name] = failures.get(name, 0) + 1
+        return failures
 
     def _render_tool_calls_table(self, per_tool: Dict[str, Dict]) -> str:
         """渲染工具调用表格 HTML"""
@@ -1462,35 +1557,47 @@ class HTMLReporter:
             return ""
         total_calls = sum(v["count"] for v in per_tool.values())
         max_count = max(v["count"] for v in per_tool.values())
+        has_failures = any(v.get("failed", 0) > 0 for v in per_tool.values())
         parts = [
             '<table class="tool-calls-table">'
-            '<tr>'
+            "<tr>"
             '<th onclick="sortToolTable(this, \'name\')" class="sortable">Tool &#9650;&#9660;</th>'
             '<th onclick="sortToolTable(this, \'ratio\')" class="sortable">Ratio &#9650;&#9660;</th>'
             '<th onclick="sortToolTable(this, \'calls\')" class="sortable">Calls &#9650;&#9660;</th>'
             '<th onclick="sortToolTable(this, \'total\')" class="sortable">Total Time &#9650;&#9660;</th>'
             '<th onclick="sortToolTable(this, \'avg\')" class="sortable">Avg Time &#9650;&#9660;</th>'
-            '</tr>'
         ]
+        if has_failures:
+            parts.append(
+                '<th onclick="sortToolTable(this, \'failed\')" class="sortable">Failed &#9650;&#9660;</th>'
+            )
+        parts.append("</tr>")
         for name, s in per_tool.items():
             pct = s["count"] / total_calls * 100 if total_calls > 0 else 0
             bar_w = s["count"] / max_count * 100 if max_count > 0 else 0
+            failed = s.get("failed", 0)
             parts.append(
                 f'<tr data-name="{html.escape(name)}" data-count="{s["count"]}" '
-                f'data-total-ms="{int(s["total_time"] * 1000)}" data-avg-ms="{int(s["avg_time"] * 1000)}">'
-                f'<td>{html.escape(name)}</td>'
+                f'data-total-ms="{int(s["total_time"] * 1000)}" data-avg-ms="{int(s["avg_time"] * 1000)}" '
+                f'data-failed="{failed}">'
+                f"<td>{html.escape(name)}</td>"
                 f'<td style="min-width:120px">{pct:.1f}%'
                 f'<div class="tool-bar"><div class="tool-bar-fill" style="width:{bar_w:.0f}%"></div></div></td>'
                 f'<td>{s["count"]}</td>'
                 f'<td>{self._format_duration(s["total_time"])}</td>'
                 f'<td>{self._format_duration(s["avg_time"])}</td>'
-                f'</tr>'
             )
-        parts.append('</table>')
+            if has_failures:
+                if failed > 0:
+                    parts.append(f'<td style="color:#d32f2f;font-weight:600">{failed}</td>')
+                else:
+                    parts.append('<td style="color:#999">0</td>')
+            parts.append("</tr>")
+        parts.append("</table>")
         parts.append(
             '<div style="margin-top:8px;font-size:12px;color:#d32f2f">'
-            '⚠ 时间为估算值：将每轮 LLM 响应到下次请求的间隔均分给该轮所有工具调用，'
-            '末轮迭代无后续请求记为 0，不含单个工具的实际执行时长。</div>'
+            "⚠ 时间为估算值：将每轮 LLM 响应到下次请求的间隔均分给该轮所有工具调用，"
+            "末轮迭代无后续请求记为 0，不含单个工具的实际执行时长。</div>"
         )
         return "\n".join(parts)
 
@@ -1500,7 +1607,7 @@ class HTMLReporter:
             '<div class="stat-section">'
             '<div class="collapsible" onclick="toggleCollapsible(this)" style="background:#e3f2fd;border-radius:4px;padding:8px 12px;cursor:pointer">'
             '<span class="toggle-icon">&#9654;</span> '
-            '<strong>指标说明</strong></div>'
+            "<strong>指标说明</strong></div>"
             '<div class="collapsible-content" style="padding:12px 0;font-size:13px;color:#555;line-height:1.8">'
             '<table style="width:100%;border-collapse:collapse">'
             '<tr style="border-bottom:1px solid #e0e0e0"><td style="padding:6px 12px;font-weight:600;width:120px;vertical-align:top">LLM 耗时</td>'
@@ -1508,15 +1615,22 @@ class HTMLReporter:
             '<tr style="border-bottom:1px solid #e0e0e0"><td style="padding:6px 12px;font-weight:600;vertical-align:top">Tool 耗时</td>'
             '<td style="padding:6px 12px">LLM 返回结果到下一轮请求之间的间隔时间。'
             '<span style="color:#d32f2f">⚠ 此数值不仅包含工具本身的执行时间，'
-            '还包含框架调度、上下文引擎处理、子 Agent 启动等开销。'
-            'Tool Calls 表中的单工具时间为估算值（将每轮总耗时均分给所有工具调用），'
-            '末轮迭代无后续请求记为 0，不反映单个工具的实际执行时长。</span></td></tr>'
+            "还包含框架调度、上下文引擎处理、子 Agent 启动等开销。"
+            "Tool Calls 表中的单工具时间为估算值（将每轮总耗时均分给所有工具调用），"
+            "末轮迭代无后续请求记为 0，不反映单个工具的实际执行时长。</span></td></tr>"
+            '<tr style="border-bottom:1px solid #e0e0e0"><td style="padding:6px 12px;font-weight:600;vertical-align:top">Tool Failed ⚠</td>'
+            '<td style="padding:6px 12px"><span style="color:#d32f2f">⚠ 基于启发式内容匹配，数据仅供参考。</span>'
+            "通过检测工具返回结果中的错误模式（如框架报错 "
+            "<code>operation execution error</code>、"
+            "网络请求失败 <code>[ERROR]</code>）来判断工具是否执行失败。"
+            "此方法无法检测所有失败场景（如工具返回业务错误码、空结果等），"
+            "实际失败数可能高于显示值。</td></tr>"
             '<tr><td style="padding:6px 12px;font-weight:600;vertical-align:top">Cache ⚠</td>'
             '<td style="padding:6px 12px"><span style="color:#d32f2f">⚠ 当前数据不准确。</span>'
-            '框架仅在同步调用（invoke）模式下记录 cache_tokens，'
-            '流式调用（stream）模式下该字段始终为 0。'
-            '实际缓存使用量远高于当前显示值，需等待框架修复后数据才可信。</td></tr>'
-            '</table></div></div>'
+            "框架仅在同步调用（invoke）模式下记录 cache_tokens，"
+            "流式调用（stream）模式下该字段始终为 0。"
+            "实际缓存使用量远高于当前显示值，需等待框架修复后数据才可信。</td></tr>"
+            "</table></div></div>"
         )
 
     def _generate_global_statistics_html(self, result: AnalysisResult) -> str:
@@ -1525,24 +1639,41 @@ class HTMLReporter:
         parts: List[str] = []
 
         # 概览卡片
-        avg_llm_overview = stats.total_llm_time_seconds / stats.total_iterations if stats.total_iterations > 0 else 0
-        avg_tool_overview = stats.total_tool_time_seconds / stats.total_iterations if stats.total_iterations > 0 else 0
-        tps_overview = stats.total_output_tokens / stats.total_llm_time_seconds if stats.total_llm_time_seconds > 0 else 0
+        avg_llm_overview = (
+            stats.total_llm_time_seconds / stats.total_iterations
+            if stats.total_iterations > 0
+            else 0
+        )
+        avg_tool_overview = (
+            stats.total_tool_time_seconds / stats.total_iterations
+            if stats.total_iterations > 0
+            else 0
+        )
+        tps_overview = (
+            stats.total_output_tokens / stats.total_llm_time_seconds
+            if stats.total_llm_time_seconds > 0
+            else 0
+        )
         total_subagents = sum(len(chain.subagents) for chain in result.sorted_sessions)
-        parts.append(self._stat_cards_html([
-            (stats.total_sessions, "Sessions"),
-            (stats.total_iterations, "Iterations"),
-            (total_subagents, "SubAgents"),
-            (f"{stats.total_tool_calls:,}", "Tool Calls"),
-            (self._format_duration(stats.total_duration_seconds), "Total Time"),
-            (self._format_duration(stats.total_llm_time_seconds), "LLM Total"),
-            (self._format_duration(stats.total_tool_time_seconds), "Tool Total"),
-            (self._format_duration(avg_llm_overview), "Avg LLM"),
-            (self._format_duration(avg_tool_overview), "Avg Tool"),
-            (f"{stats.total_tokens:,}", "Tokens"),
-            (f"{stats.total_output_tokens:,}", "Output Tokens"),
-            (f"{tps_overview:.1f} tok/s", "Output tok/s"),
-        ]))
+        parts.append(
+            self._stat_cards_html(
+                [
+                    (stats.total_sessions, "Sessions"),
+                    (stats.total_iterations, "Iterations"),
+                    (total_subagents, "SubAgents"),
+                    (f"{stats.total_tool_calls:,}", "Tool Calls"),
+                    (f"{stats.failed_tool_calls:,}", "Tool Failed ⚠"),
+                    (self._format_duration(stats.total_duration_seconds), "Total Time"),
+                    (self._format_duration(stats.total_llm_time_seconds), "LLM Total"),
+                    (self._format_duration(stats.total_tool_time_seconds), "Tool Total"),
+                    (self._format_duration(avg_llm_overview), "Avg LLM"),
+                    (self._format_duration(avg_tool_overview), "Avg Tool"),
+                    (f"{stats.total_tokens:,}", "Tokens"),
+                    (f"{stats.total_output_tokens:,}", "Output Tokens"),
+                    (f"{tps_overview:.1f} tok/s", "Output tok/s"),
+                ]
+            )
+        )
 
         # 指标说明
         parts.append(self._generate_metrics_tips_html())
@@ -1563,47 +1694,80 @@ class HTMLReporter:
                 parts.append(self._stat_section_raw_html(label, token_chart_html))
 
         # 工具调用统计
-        per_tool = self._compute_per_tool_stats(result.sorted_sessions)
+        per_tool = self._compute_per_tool_stats(result.sorted_sessions, stats.tool_failure_counts)
         if per_tool:
-            parts.append(self._stat_section_raw_html("Tool Calls", self._render_tool_calls_table(per_tool)))
+            parts.append(
+                self._stat_section_raw_html("Tool Calls", self._render_tool_calls_table(per_tool))
+            )
 
         # LLM 调用统计
-        avg_llm_per_call = stats.total_llm_time_seconds / stats.total_iterations if stats.total_iterations > 0 else 0
-        all_llm_durations = sorted(
-            t.llm_call_duration for chain in result.sorted_sessions
-            for t in chain.iteration_timings if t.llm_call_duration > 0
+        avg_llm_per_call = (
+            stats.total_llm_time_seconds / stats.total_iterations
+            if stats.total_iterations > 0
+            else 0
         )
-        parts.append(self._stat_section_html("LLM Calls", [
-            ("Total Time", self._format_duration(stats.total_llm_time_seconds)),
-            ("Avg Time", self._format_duration(avg_llm_per_call)),
-            ("Total Calls", f"{stats.total_iterations}"),
-            ("P50", self._format_duration(self._percentile(all_llm_durations, 50))),
-            ("P90", self._format_duration(self._percentile(all_llm_durations, 90))),
-            ("P95", self._format_duration(self._percentile(all_llm_durations, 95))),
-            ("P99", self._format_duration(self._percentile(all_llm_durations, 99))),
-        ]))
+        all_llm_durations = sorted(
+            t.llm_call_duration
+            for chain in result.sorted_sessions
+            for t in chain.iteration_timings
+            if t.llm_call_duration > 0
+        )
+        parts.append(
+            self._stat_section_html(
+                "LLM Calls",
+                [
+                    ("Total Time", self._format_duration(stats.total_llm_time_seconds)),
+                    ("Avg Time", self._format_duration(avg_llm_per_call)),
+                    ("Total Calls", f"{stats.total_iterations}"),
+                    ("P50", self._format_duration(self._percentile(all_llm_durations, 50))),
+                    ("P90", self._format_duration(self._percentile(all_llm_durations, 90))),
+                    ("P95", self._format_duration(self._percentile(all_llm_durations, 95))),
+                    ("P99", self._format_duration(self._percentile(all_llm_durations, 99))),
+                ],
+            )
+        )
 
         # 时间统计
         max_llm = max(
-            (t.llm_call_duration for chain in result.sorted_sessions for t in chain.iteration_timings),
+            (
+                t.llm_call_duration
+                for chain in result.sorted_sessions
+                for t in chain.iteration_timings
+            ),
             default=0.0,
         )
         max_tool = max(
-            (t.tool_processing_duration for chain in result.sorted_sessions for t in chain.iteration_timings),
+            (
+                t.tool_processing_duration
+                for chain in result.sorted_sessions
+                for t in chain.iteration_timings
+            ),
             default=0.0,
         )
         min_llm_dur = min(
-            (t.llm_call_duration for chain in result.sorted_sessions for t in chain.iteration_timings if t.llm_call_duration > 0),
+            (
+                t.llm_call_duration
+                for chain in result.sorted_sessions
+                for t in chain.iteration_timings
+                if t.llm_call_duration > 0
+            ),
             default=0.0,
         )
         min_tool_dur = min(
-            (t.tool_processing_duration for chain in result.sorted_sessions for t in chain.iteration_timings if t.tool_processing_duration > 0),
+            (
+                t.tool_processing_duration
+                for chain in result.sorted_sessions
+                for t in chain.iteration_timings
+                if t.tool_processing_duration > 0
+            ),
             default=0.0,
         )
         # 每轮工具调用数 min/max
         all_tool_counts = [
-            len(r.tool_calls) for chain in result.sorted_sessions
-            for r in chain.responses if r.tool_calls
+            len(r.tool_calls)
+            for chain in result.sorted_sessions
+            for r in chain.responses
+            if r.tool_calls
         ]
         max_tc = max(all_tool_counts) if all_tool_counts else 0
         min_tc = min(all_tool_counts) if all_tool_counts else 0
@@ -1620,59 +1784,87 @@ class HTMLReporter:
             ("Tool Calls/Iter Min", f"{min_tc}"),
         ]
         if stats.total_iterations > 0:
-            avg_total = (stats.total_llm_time_seconds + stats.total_tool_time_seconds) / stats.total_iterations
+            avg_total = (
+                stats.total_llm_time_seconds + stats.total_tool_time_seconds
+            ) / stats.total_iterations
             timing_rows.append(("Avg per Iteration", self._format_duration(avg_total)))
         parts.append(self._stat_section_html("Timing", timing_rows))
 
         # Token 统计
-        avg_tokens = stats.total_tokens // stats.total_iterations if stats.total_iterations > 0 else 0
-        tps = stats.total_output_tokens / stats.total_llm_time_seconds if stats.total_llm_time_seconds > 0 else 0
-        g_reasoning_chars = sum(len(r.reasoning_content or "") for chain in result.sorted_sessions for r in chain.responses)
-        g_content_chars = sum(len(r.content or "") for chain in result.sorted_sessions for r in chain.responses)
-        parts.append(self._stat_section_html("Tokens", [
-            ("Input", f"{stats.total_input_tokens:,}"),
-            ("Output", f"{stats.total_output_tokens:,}"),
-            ("Total", f"{stats.total_tokens:,}"),
-            ("Cache ⚠", f"{stats.total_cache_tokens:,}"),
-            ("Avg per Iteration", f"{avg_tokens:,}"),
-            ("Output tok/s", f"{tps:.1f}"),
-            ("Reasoning Chars", f"{g_reasoning_chars:,}"),
-            ("Content Chars", f"{g_content_chars:,}"),
-        ]))
+        avg_tokens = (
+            stats.total_tokens // stats.total_iterations if stats.total_iterations > 0 else 0
+        )
+        tps = (
+            stats.total_output_tokens / stats.total_llm_time_seconds
+            if stats.total_llm_time_seconds > 0
+            else 0
+        )
+        g_reasoning_chars = sum(
+            len(r.reasoning_content or "")
+            for chain in result.sorted_sessions
+            for r in chain.responses
+        )
+        g_content_chars = sum(
+            len(r.content or "") for chain in result.sorted_sessions for r in chain.responses
+        )
+        parts.append(
+            self._stat_section_html(
+                "Tokens",
+                [
+                    ("Input", f"{stats.total_input_tokens:,}"),
+                    ("Output", f"{stats.total_output_tokens:,}"),
+                    ("Total", f"{stats.total_tokens:,}"),
+                    ("Cache ⚠", f"{stats.total_cache_tokens:,}"),
+                    ("Avg per Iteration", f"{avg_tokens:,}"),
+                    ("Output tok/s", f"{tps:.1f}"),
+                    ("Reasoning Chars", f"{g_reasoning_chars:,}"),
+                    ("Content Chars", f"{g_content_chars:,}"),
+                ],
+            )
+        )
 
         # 模型使用统计
         if stats.sessions_by_model:
             parts.append('<div class="stat-section">')
             parts.append("<h3>Models</h3>")
-            parts.append('<table><tr><th>Model</th><th>Sessions</th></tr>')
+            parts.append("<table><tr><th>Model</th><th>Sessions</th></tr>")
             for model, cnt in sorted(stats.sessions_by_model.items(), key=lambda x: -x[1]):
-                parts.append(f'<tr><td>{html.escape(model)}</td><td>{cnt}</td></tr>')
-            parts.append('</table></div>')
+                parts.append(f"<tr><td>{html.escape(model)}</td><td>{cnt}</td></tr>")
+            parts.append("</table></div>")
 
         # Session 对比表
         if stats.session_stats:
             parts.append('<div class="stat-section">')
             parts.append("<h3>Session Comparison</h3>")
             parts.append(
-                '<table><tr>'
-                '<th>Session</th><th>Model</th><th style="text-align: right;">Tool Calls</th><th style="text-align: right;">Iters</th>'
+                "<table><tr>"
+                '<th>Session</th><th>Model</th><th style="text-align: right;">Tool Calls</th>'
+                '<th style="text-align: right;">Failed ⚠</th>'
+                '<th style="text-align: right;">Iters</th>'
                 '<th style="text-align: right;">LLM</th><th style="text-align: right;">Tool</th><th style="text-align: right;">Tokens</th>'
-                '</tr>'
+                "</tr>"
             )
             for s in stats.session_stats:
                 short = self._short_session_id(s["session_id"])
+                failed = s.get("failed_tool_calls", 0)
+                failed_style = (
+                    ' style="text-align: right; color:#d32f2f; font-weight:600;"'
+                    if failed > 0
+                    else ' style="text-align: right;"'
+                )
                 parts.append(
-                    f'<tr>'
-                    f'<td>{short}</td>'
+                    f"<tr>"
+                    f"<td>{short}</td>"
                     f'<td>{html.escape(s["model"])}</td>'
                     f'<td style="text-align: right;">{s["tool_calls"]}</td>'
+                    f"<td{failed_style}>{failed}</td>"
                     f'<td style="text-align: right;">{s["iterations"]}</td>'
                     f'<td style="text-align: right;">{self._format_duration(s["llm_time"])}</td>'
                     f'<td style="text-align: right;">{self._format_duration(s["tool_time"])}</td>'
                     f'<td style="text-align: right;">{s["tokens"]:,}</td>'
-                    f'</tr>'
+                    f"</tr>"
                 )
-            parts.append('</table></div>')
+            parts.append("</table></div>")
 
         return "\n".join(parts)
 
@@ -1681,9 +1873,7 @@ class HTMLReporter:
         parts: List[str] = []
 
         # 工具调用总数
-        total_tool_calls = sum(
-            len(resp.tool_calls) for resp in chain.responses if resp.tool_calls
-        )
+        total_tool_calls = sum(len(resp.tool_calls) for resp in chain.responses if resp.tool_calls)
 
         # 时间统计
         timings = chain.iteration_timings
@@ -1691,7 +1881,10 @@ class HTMLReporter:
         max_llm = max((t.llm_call_duration for t in timings), default=0)
         max_tool = max((t.tool_processing_duration for t in timings), default=0)
         min_llm = min((t.llm_call_duration for t in timings if t.llm_call_duration > 0), default=0)
-        min_tool = min((t.tool_processing_duration for t in timings if t.tool_processing_duration > 0), default=0)
+        min_tool = min(
+            (t.tool_processing_duration for t in timings if t.tool_processing_duration > 0),
+            default=0,
+        )
 
         # Token 统计
         s_input = sum(r.input_tokens for r in chain.responses)
@@ -1702,21 +1895,33 @@ class HTMLReporter:
         # 概览卡片
         avg_llm_s = chain.total_llm_duration_seconds / num_iters if num_iters > 0 else 0
         avg_tool_s = chain.total_tool_duration_seconds / num_iters if num_iters > 0 else 0
-        tps_s = s_output / chain.total_llm_duration_seconds if chain.total_llm_duration_seconds > 0 else 0
-        s_total_time = (chain.end_time - chain.start_time) if chain.end_time and chain.start_time else 0
-        parts.append(self._stat_cards_html([
-            (num_iters, "Iterations"),
-            (len(chain.subagents), "Subagents"),
-            (total_tool_calls, "Tool Calls"),
-            (self._format_duration(s_total_time), "Total Time"),
-            (self._format_duration(chain.total_llm_duration_seconds), "LLM Total"),
-            (self._format_duration(chain.total_tool_duration_seconds), "Tool Total"),
-            (self._format_duration(avg_llm_s), "Avg LLM"),
-            (self._format_duration(avg_tool_s), "Avg Tool"),
-            (f"{s_total:,}", "Tokens"),
-            (f"{s_output:,}", "Output Tokens"),
-            (f"{tps_s:.1f} tok/s", "Output tok/s"),
-        ]))
+        tps_s = (
+            s_output / chain.total_llm_duration_seconds
+            if chain.total_llm_duration_seconds > 0
+            else 0
+        )
+        s_total_time = (
+            (chain.end_time - chain.start_time) if chain.end_time and chain.start_time else 0
+        )
+        s_failed_total = sum(self._detect_chain_failures(chain).values())
+        parts.append(
+            self._stat_cards_html(
+                [
+                    (num_iters, "Iterations"),
+                    (len(chain.subagents), "Subagents"),
+                    (total_tool_calls, "Tool Calls"),
+                    (f"{s_failed_total:,}", "Tool Failed ⚠"),
+                    (self._format_duration(s_total_time), "Total Time"),
+                    (self._format_duration(chain.total_llm_duration_seconds), "LLM Total"),
+                    (self._format_duration(chain.total_tool_duration_seconds), "Tool Total"),
+                    (self._format_duration(avg_llm_s), "Avg LLM"),
+                    (self._format_duration(avg_tool_s), "Avg Tool"),
+                    (f"{s_total:,}", "Tokens"),
+                    (f"{s_output:,}", "Output Tokens"),
+                    (f"{tps_s:.1f} tok/s", "Output tok/s"),
+                ]
+            )
+        )
 
         # 指标说明
         parts.append(self._generate_metrics_tips_html())
@@ -1732,24 +1937,32 @@ class HTMLReporter:
             parts.append(self._stat_section_raw_html("Token Distribution", token_section_html))
 
         # 工具调用统计
-        per_tool = self._compute_per_tool_stats([chain])
+        session_failures = self._detect_chain_failures(chain)
+        per_tool = self._compute_per_tool_stats([chain], session_failures)
         if per_tool:
-            parts.append(self._stat_section_raw_html("Tool Calls", self._render_tool_calls_table(per_tool)))
+            parts.append(
+                self._stat_section_raw_html("Tool Calls", self._render_tool_calls_table(per_tool))
+            )
 
         # LLM 调用统计
         avg_llm_per_call = chain.total_llm_duration_seconds / num_iters if num_iters > 0 else 0
         session_llm_durations = sorted(
             t.llm_call_duration for t in chain.iteration_timings if t.llm_call_duration > 0
         )
-        parts.append(self._stat_section_html("LLM Calls", [
-            ("Total Time", self._format_duration(chain.total_llm_duration_seconds)),
-            ("Avg Time", self._format_duration(avg_llm_per_call)),
-            ("Total Calls", f"{num_iters}"),
-            ("P50", self._format_duration(self._percentile(session_llm_durations, 50))),
-            ("P90", self._format_duration(self._percentile(session_llm_durations, 90))),
-            ("P95", self._format_duration(self._percentile(session_llm_durations, 95))),
-            ("P99", self._format_duration(self._percentile(session_llm_durations, 99))),
-        ]))
+        parts.append(
+            self._stat_section_html(
+                "LLM Calls",
+                [
+                    ("Total Time", self._format_duration(chain.total_llm_duration_seconds)),
+                    ("Avg Time", self._format_duration(avg_llm_per_call)),
+                    ("Total Calls", f"{num_iters}"),
+                    ("P50", self._format_duration(self._percentile(session_llm_durations, 50))),
+                    ("P90", self._format_duration(self._percentile(session_llm_durations, 90))),
+                    ("P95", self._format_duration(self._percentile(session_llm_durations, 95))),
+                    ("P99", self._format_duration(self._percentile(session_llm_durations, 99))),
+                ],
+            )
+        )
 
         # 时间统计
         avg_llm = chain.total_llm_duration_seconds / num_iters if num_iters > 0 else 0
@@ -1758,49 +1971,63 @@ class HTMLReporter:
         s_tool_counts = [len(r.tool_calls) for r in chain.responses if r.tool_calls]
         s_max_tc = max(s_tool_counts) if s_tool_counts else 0
         s_min_tc = min(s_tool_counts) if s_tool_counts else 0
-        parts.append(self._stat_section_html("Timing", [
-            ("LLM Avg", self._format_duration(avg_llm)),
-            ("LLM Min", self._format_duration(min_llm)),
-            ("LLM Max", self._format_duration(max_llm)),
-            ("Tool Avg", self._format_duration(avg_tool)),
-            ("Tool Min", self._format_duration(min_tool)),
-            ("Tool Max", self._format_duration(max_tool)),
-            ("Avg per Iteration", self._format_duration(avg_llm + avg_tool)),
-            ("LLM Total", self._format_duration(chain.total_llm_duration_seconds)),
-            ("Tool Total", self._format_duration(chain.total_tool_duration_seconds)),
-            ("Tool Calls/Iter Max", f"{s_max_tc}"),
-            ("Tool Calls/Iter Min", f"{s_min_tc}"),
-        ]))
+        parts.append(
+            self._stat_section_html(
+                "Timing",
+                [
+                    ("LLM Avg", self._format_duration(avg_llm)),
+                    ("LLM Min", self._format_duration(min_llm)),
+                    ("LLM Max", self._format_duration(max_llm)),
+                    ("Tool Avg", self._format_duration(avg_tool)),
+                    ("Tool Min", self._format_duration(min_tool)),
+                    ("Tool Max", self._format_duration(max_tool)),
+                    ("Avg per Iteration", self._format_duration(avg_llm + avg_tool)),
+                    ("LLM Total", self._format_duration(chain.total_llm_duration_seconds)),
+                    ("Tool Total", self._format_duration(chain.total_tool_duration_seconds)),
+                    ("Tool Calls/Iter Max", f"{s_max_tc}"),
+                    ("Tool Calls/Iter Min", f"{s_min_tc}"),
+                ],
+            )
+        )
 
         # Token 统计
         avg_tokens = s_total // num_iters if num_iters > 0 else 0
-        tps_s2 = s_output / chain.total_llm_duration_seconds if chain.total_llm_duration_seconds > 0 else 0
+        tps_s2 = (
+            s_output / chain.total_llm_duration_seconds
+            if chain.total_llm_duration_seconds > 0
+            else 0
+        )
         s_reasoning_chars = sum(len(r.reasoning_content or "") for r in chain.responses)
         s_content_chars = sum(len(r.content or "") for r in chain.responses)
-        parts.append(self._stat_section_html("Tokens", [
-            ("Input", f"{s_input:,}"),
-            ("Output", f"{s_output:,}"),
-            ("Total", f"{s_total:,}"),
-            ("Cache ⚠", f"{s_cache:,}"),
-            ("Avg per Iteration", f"{avg_tokens:,}"),
-            ("Output tok/s", f"{tps_s2:.1f}"),
-            ("Reasoning Chars", f"{s_reasoning_chars:,}"),
-            ("Content Chars", f"{s_content_chars:,}"),
-        ]))
+        parts.append(
+            self._stat_section_html(
+                "Tokens",
+                [
+                    ("Input", f"{s_input:,}"),
+                    ("Output", f"{s_output:,}"),
+                    ("Total", f"{s_total:,}"),
+                    ("Cache ⚠", f"{s_cache:,}"),
+                    ("Avg per Iteration", f"{avg_tokens:,}"),
+                    ("Output tok/s", f"{tps_s2:.1f}"),
+                    ("Reasoning Chars", f"{s_reasoning_chars:,}"),
+                    ("Content Chars", f"{s_content_chars:,}"),
+                ],
+            )
+        )
 
         # Subagent 统计
         if chain.subagents:
             parts.append('<div class="stat-section">')
             parts.append("<h3>Subagents</h3>")
-            parts.append('<table><tr><th>Subagent</th><th>Depth</th><th>Duration</th></tr>')
+            parts.append("<table><tr><th>Subagent</th><th>Depth</th><th>Duration</th></tr>")
             for sa in chain.subagents:
                 duration = sa.end_time - sa.start_time if sa.end_time and sa.start_time else 0
                 short = self._short_session_id(sa.session_id)
                 parts.append(
-                    f'<tr><td>{short}</td><td>{sa.depth}</td>'
-                    f'<td>{self._format_duration(duration)}</td></tr>'
+                    f"<tr><td>{short}</td><td>{sa.depth}</td>"
+                    f"<td>{self._format_duration(duration)}</td></tr>"
                 )
-            parts.append('</table></div>')
+            parts.append("</table></div>")
 
         return "\n".join(parts)
 
@@ -1813,7 +2040,7 @@ class HTMLReporter:
                 f'<div class="stat-card"><div class="stat-value">{val}</div>'
                 f'<div class="stat-label">{label}</div></div>'
             )
-        parts.append('</div>')
+        parts.append("</div>")
         return "\n".join(parts)
 
     @staticmethod
@@ -1826,7 +2053,7 @@ class HTMLReporter:
                 f'<div class="stat-row"><span class="stat-name">{name}</span>'
                 f'<span class="stat-val">{val}</span></div>'
             )
-        parts.append('</div>')
+        parts.append("</div>")
         return "\n".join(parts)
 
     @staticmethod

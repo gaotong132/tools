@@ -119,6 +119,9 @@ class Statistics:
     # 工具调用统计
     tool_call_counts: Dict[str, int] = field(default_factory=dict)  # tool_name -> count
     total_tool_calls: int = 0
+    # 工具失败统计
+    tool_failure_counts: Dict[str, int] = field(default_factory=dict)  # tool_name -> fail count
+    failed_tool_calls: int = 0
     # 每个 session 的统计（用于对比表）
     session_stats: List[Dict[str, Any]] = field(default_factory=list)
 

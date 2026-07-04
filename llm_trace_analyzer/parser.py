@@ -9,15 +9,21 @@ from .constants import TraceEventType
 from .models import LLMRequest, LLMResponse, SystemMetrics
 
 # 预编译 usage_metadata 正则
-_USAGE_INT_NAME_RE = re.compile(r'(input_tokens|output_tokens|total_tokens|cache_tokens)=(\d+)')
-_USAGE_FLOAT_NAME_RE = re.compile(r'(input_cost|output_cost|total_cost)=([\d.]+)')
+_USAGE_INT_NAME_RE = re.compile(r"(input_tokens|output_tokens|total_tokens|cache_tokens)=(\d+)")
+_USAGE_FLOAT_NAME_RE = re.compile(r"(input_cost|output_cost|total_cost)=([\d.]+)")
 
 
 class TraceParser:
     def __init__(self, traces: List[Dict[str, Any]]):
         self.traces = traces
 
-    def parse(self) -> Tuple[Dict[str, List[LLMRequest]], Dict[str, List[LLMResponse]], Dict[Tuple[str, int], List[SystemMetrics]]]:
+    def parse(
+        self,
+    ) -> Tuple[
+        Dict[str, List[LLMRequest]],
+        Dict[str, List[LLMResponse]],
+        Dict[Tuple[str, int], List[SystemMetrics]],
+    ]:
         grouped = self._group_traces()
 
         requests: Dict[str, List[LLMRequest]] = {}
@@ -256,11 +262,15 @@ class TraceParser:
         if not body_dict and not reasoning_merged:
             return None
 
-        timestamp = output_traces[0]["timestamp"] if output_traces else (
-            reasoning_traces[0]["timestamp"] if reasoning_traces else 0
+        timestamp = (
+            output_traces[0]["timestamp"]
+            if output_traces
+            else (reasoning_traces[0]["timestamp"] if reasoning_traces else 0)
         )
-        model_name = output_traces[0]["model_name"] if output_traces else (
-            reasoning_traces[0]["model_name"] if reasoning_traces else ""
+        model_name = (
+            output_traces[0]["model_name"]
+            if output_traces
+            else (reasoning_traces[0]["model_name"] if reasoning_traces else "")
         )
 
         content = body_dict.get("content", "")

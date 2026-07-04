@@ -381,6 +381,7 @@ INDEX_TEMPLATE = """
                     ['Tool Time', 'tool_time', 'time'],
                     ['Avg Tool', 'avg_tool_time', 'time'],
                     ['Tool Calls', 'tool_calls', 'number'],
+                    ['Tool Failed ⚠', 'failed_tool_calls', 'number'],
                 ]],
             ];
 
@@ -611,6 +612,7 @@ INDEX_TEMPLATE = """
                 else if (key === 'ratio' || key === 'calls') {{ va = +a.dataset.count; vb = +b.dataset.count; }}
                 else if (key === 'total') {{ va = +a.dataset.totalMs; vb = +b.dataset.totalMs; }}
                 else if (key === 'avg') {{ va = +a.dataset.avgMs; vb = +b.dataset.avgMs; }}
+                else if (key === 'failed') {{ va = +(a.dataset.failed || 0); vb = +(b.dataset.failed || 0); }}
                 if (typeof va === 'string') return isAsc ? va.localeCompare(vb) : vb.localeCompare(va);
                 return isAsc ? va - vb : vb - va;
             }});
@@ -1134,6 +1136,7 @@ SESSION_DETAIL_TEMPLATE = """
                 else if (key === 'ratio' || key === 'calls') {{ va = +a.dataset.count; vb = +b.dataset.count; }}
                 else if (key === 'total') {{ va = +a.dataset.totalMs; vb = +b.dataset.totalMs; }}
                 else if (key === 'avg') {{ va = +a.dataset.avgMs; vb = +b.dataset.avgMs; }}
+                else if (key === 'failed') {{ va = +(a.dataset.failed || 0); vb = +(b.dataset.failed || 0); }}
                 if (typeof va === 'string') return isAsc ? va.localeCompare(vb) : vb.localeCompare(va);
                 return isAsc ? va - vb : vb - va;
             }});
