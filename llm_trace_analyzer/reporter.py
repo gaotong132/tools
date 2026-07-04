@@ -1423,6 +1423,15 @@ class HTMLReporter:
         avg_input = sum(d["input"] for d in chart_data) / len(chart_data)
         avg_output = sum(d["output"] for d in chart_data) / len(chart_data)
 
+        # 平均每轮 Input Token 增长量
+        if len(chart_data) >= 2:
+            first_input = chart_data[0]["input"]
+            last_input = chart_data[-1]["input"]
+            avg_growth = (last_input - first_input) / (len(chart_data) - 1)
+        else:
+            avg_growth = 0
+        growth_str = f"{avg_growth:+,.0f}" if avg_growth != 0 else "0"
+
         # 推理时长归一化到 token 轴
         max_llm = max((d["llm_duration"] for d in chart_data), default=0)
         llm_scale = max_tokens / max_llm if max_llm > 0 else 0
@@ -1489,6 +1498,7 @@ class HTMLReporter:
             f'<div class="chart-pxx-legend">'
             f'<span class="chart-pxx-legend-item">Avg Input: <strong>{avg_input:,.0f}</strong></span>'
             f'<span class="chart-pxx-legend-item">Avg Output: <strong>{avg_output:,.0f}</strong></span>'
+            f'<span class="chart-pxx-legend-item">Avg Growth/iter: <strong>{growth_str}</strong></span>'
             f"</div>"
             "</div>"
         )
