@@ -185,7 +185,7 @@ INDEX_TEMPLATE = """
 .chart-toggle:not(.active) {{ opacity: 0.4; }}
 .timing-chart {{ display: flex; align-items: flex-end; gap: 2px; height: 200px; padding: 0 4px; border-bottom: 1px solid #e0e0e0; position: relative; }}
 .timing-chart.dense {{ gap: 0; }}
-.chart-bar-col {{ display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 3px; cursor: pointer; }}
+.chart-bar-col {{ display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 3px; cursor: pointer; position: relative; }}
 .timing-chart.dense .chart-bar-col {{ min-width: 0; }}
 .chart-bar {{ display: flex; flex-direction: column; width: 100%; justify-content: flex-end; }}
 .chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
@@ -203,11 +203,12 @@ INDEX_TEMPLATE = """
 .chart-calls-legend-line {{ display: inline-block; width: 16px; border-top: 2px dashed #e65100; vertical-align: middle; }}
 .timing-chart-wrapper.overlay-mode-pxx .chart-tc-svg {{ display: none; }}
 .timing-chart-wrapper.overlay-mode-pxx .chart-tool-count {{ display: none; }}
-.chart-bar-fail .chart-bar-tool {{ box-shadow: inset 0 0 0 2px #d32f2f; }}
+.chart-bar-fail {{ background: rgba(211, 47, 47, 0.08); }}
+.chart-fail-dot {{ position: absolute; top: -4px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; border-radius: 50%; background: #d32f2f; z-index: 3; }}
 .chart-legend-sep {{ width: 1px; height: 16px; background: #ccc; margin: 0 8px; display: inline-block; vertical-align: middle; }}
 .chart-calls-legend {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; font-size: 12px; color: #555; }}
 .chart-calls-legend-item {{ display: flex; align-items: center; gap: 4px; }}
-.chart-calls-legend-dot {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #d32f2f; }}
+.chart-calls-legend-dot {{ display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #d32f2f; }}
 .timing-chart-wrapper.overlay-mode-calls .chart-pxx-line {{ display: none; }}
 .timing-chart-wrapper.overlay-mode-calls .chart-pxx-legend {{ display: none; }}
 .timing-chart-wrapper.overlay-mode-calls .chart-calls-legend {{ display: flex; }}
@@ -859,7 +860,7 @@ SESSION_DETAIL_TEMPLATE = """
 .chart-toggle:not(.active) {{ opacity: 0.4; }}
 .timing-chart {{ display: flex; align-items: flex-end; gap: 2px; height: 200px; padding: 0 4px; border-bottom: 1px solid #e0e0e0; position: relative; }}
 .timing-chart.dense {{ gap: 0; }}
-.chart-bar-col {{ display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 3px; cursor: pointer; }}
+.chart-bar-col {{ display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 3px; cursor: pointer; position: relative; }}
 .timing-chart.dense .chart-bar-col {{ min-width: 0; }}
 .chart-bar {{ display: flex; flex-direction: column; width: 100%; justify-content: flex-end; }}
 .chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
@@ -877,11 +878,12 @@ SESSION_DETAIL_TEMPLATE = """
 .chart-calls-legend-line {{ display: inline-block; width: 16px; border-top: 2px dashed #e65100; vertical-align: middle; }}
 .timing-chart-wrapper.overlay-mode-pxx .chart-tc-svg {{ display: none; }}
 .timing-chart-wrapper.overlay-mode-pxx .chart-tool-count {{ display: none; }}
-.chart-bar-fail .chart-bar-tool {{ box-shadow: inset 0 0 0 2px #d32f2f; }}
+.chart-bar-fail {{ background: rgba(211, 47, 47, 0.08); }}
+.chart-fail-dot {{ position: absolute; top: -4px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; border-radius: 50%; background: #d32f2f; z-index: 3; }}
 .chart-legend-sep {{ width: 1px; height: 16px; background: #ccc; margin: 0 8px; display: inline-block; vertical-align: middle; }}
 .chart-calls-legend {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; font-size: 12px; color: #555; }}
 .chart-calls-legend-item {{ display: flex; align-items: center; gap: 4px; }}
-.chart-calls-legend-dot {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #d32f2f; }}
+.chart-calls-legend-dot {{ display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #d32f2f; }}
 .timing-chart-wrapper.overlay-mode-calls .chart-pxx-line {{ display: none; }}
 .timing-chart-wrapper.overlay-mode-calls .chart-pxx-legend {{ display: none; }}
 .timing-chart-wrapper.overlay-mode-calls .chart-calls-legend {{ display: flex; }}
