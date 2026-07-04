@@ -1655,6 +1655,15 @@ class HTMLReporter:
             else 0
         )
         total_subagents = sum(len(chain.subagents) for chain in result.sorted_sessions)
+        # 占比计算：以 LLM + Tool 总时间为分母
+        sum_dur = stats.total_llm_time_seconds + stats.total_tool_time_seconds
+        llm_pct = f" ({stats.total_llm_time_seconds / sum_dur * 100:.0f}%)" if sum_dur > 0 else ""
+        tool_pct = f" ({stats.total_tool_time_seconds / sum_dur * 100:.0f}%)" if sum_dur > 0 else ""
+        fail_pct = (
+            f" ({stats.failed_tool_calls / stats.total_tool_calls * 100:.1f}%)"
+            if stats.total_tool_calls > 0
+            else ""
+        )
         parts.append(
             self._stat_cards_html(
                 [
@@ -1662,10 +1671,16 @@ class HTMLReporter:
                     (stats.total_iterations, "Iterations"),
                     (total_subagents, "SubAgents"),
                     (f"{stats.total_tool_calls:,}", "Tool Calls"),
-                    (f"{stats.failed_tool_calls:,}", "Tool Failed ⚠"),
-                    (self._format_duration(stats.total_duration_seconds), "Total Time"),
-                    (self._format_duration(stats.total_llm_time_seconds), "LLM Total"),
-                    (self._format_duration(stats.total_tool_time_seconds), "Tool Total"),
+                    (f"{stats.failed_tool_calls:,}{fail_pct}", "Tool Failed ⚠"),
+                    (self._format_duration(stats.total_duration_seconds), "Duration"),
+                    (
+                        f"{self._format_duration(stats.total_llm_time_seconds)}{llm_pct}",
+                        "LLM Total",
+                    ),
+                    (
+                        f"{self._format_duration(stats.total_tool_time_seconds)}{tool_pct}",
+                        "Tool Total",
+                    ),
                     (self._format_duration(avg_llm_overview), "Avg LLM"),
                     (self._format_duration(avg_tool_overview), "Avg Tool"),
                     (f"{stats.total_tokens:,}", "Tokens"),
@@ -1904,16 +1919,35 @@ class HTMLReporter:
             (chain.end_time - chain.start_time) if chain.end_time and chain.start_time else 0
         )
         s_failed_total = sum(self._detect_chain_failures(chain).values())
+        # 占比计算：以 LLM + Tool 总时间为分母
+        s_sum_dur = chain.total_llm_duration_seconds + chain.total_tool_duration_seconds
+        s_llm_pct = (
+            f" ({chain.total_llm_duration_seconds / s_sum_dur * 100:.0f}%)" if s_sum_dur > 0 else ""
+        )
+        s_tool_pct = (
+            f" ({chain.total_tool_duration_seconds / s_sum_dur * 100:.0f}%)"
+            if s_sum_dur > 0
+            else ""
+        )
+        s_fail_pct = (
+            f" ({s_failed_total / total_tool_calls * 100:.1f}%)" if total_tool_calls > 0 else ""
+        )
         parts.append(
             self._stat_cards_html(
                 [
                     (num_iters, "Iterations"),
                     (len(chain.subagents), "Subagents"),
                     (total_tool_calls, "Tool Calls"),
-                    (f"{s_failed_total:,}", "Tool Failed ⚠"),
-                    (self._format_duration(s_total_time), "Total Time"),
-                    (self._format_duration(chain.total_llm_duration_seconds), "LLM Total"),
-                    (self._format_duration(chain.total_tool_duration_seconds), "Tool Total"),
+                    (f"{s_failed_total:,}{s_fail_pct}", "Tool Failed ⚠"),
+                    (self._format_duration(s_total_time), "Duration"),
+                    (
+                        f"{self._format_duration(chain.total_llm_duration_seconds)}{s_llm_pct}",
+                        "LLM Total",
+                    ),
+                    (
+                        f"{self._format_duration(chain.total_tool_duration_seconds)}{s_tool_pct}",
+                        "Tool Total",
+                    ),
                     (self._format_duration(avg_llm_s), "Avg LLM"),
                     (self._format_duration(avg_tool_s), "Avg Tool"),
                     (f"{s_total:,}", "Tokens"),

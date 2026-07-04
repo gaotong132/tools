@@ -1,7 +1,7 @@
 """HTML模板模块"""
 
 REQUEST_TEMPLATE = """
-<div>
+<div class="request-section">
     <span class="label">REQUEST</span>
     <span class="label {source_class}">{source_label}</span>
     {internal_label}
@@ -50,7 +50,7 @@ SYSTEM_PROMPT_TEMPLATE = """
 """
 
 RESPONSE_TEMPLATE = """
-<div style="margin-top: 15px;">
+<div class="response-section">
     <span class="label response">RESPONSE</span>
     <span class="label {source_class}">{source_label}</span>
     <span class="timestamp">{timestamp}</span>
@@ -674,6 +674,8 @@ SESSION_DETAIL_TEMPLATE = """
         .iteration-header .copy-btn {{ position: static; margin-left: 15px; padding: 4px 12px; opacity: 0.9; }}
         .time-stats {{ margin-left: 15px; color: #666; font-size: 12px; font-weight: normal; }}
         .iteration-content {{ padding: 15px; }}
+        .request-section {{ padding: 10px 12px; border-left: 3px solid #1976d2; background: #fafbfc; border-radius: 0 6px 6px 0; margin-bottom: 8px; }}
+        .response-section {{ padding: 10px 12px; border-left: 3px solid #388e3c; background: #f9fdf9; border-radius: 0 6px 6px 0; margin-bottom: 8px; }}
         .json-container {{ background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 0; margin: 10px 0; overflow: hidden; position: relative; }}
         .json-content {{ font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; white-space: pre-wrap; word-break: break-all; overflow-x: auto; overflow-y: auto; max-height: 400px; padding: 15px; padding-top: 35px; padding-right: 50px; margin: 0; }}
         .copy-btn {{ position: absolute; top: 8px; right: 18px; padding: 4px 8px; background: #4a90d9; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; opacity: 0.8; z-index: 10; }}
