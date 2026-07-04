@@ -189,7 +189,7 @@ INDEX_TEMPLATE = """
 .timing-chart.dense .chart-bar-col {{ min-width: 0; }}
 .chart-bar {{ display: flex; flex-direction: column; width: 100%; justify-content: flex-end; }}
 .chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
-.chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
+.chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; position: relative; }}
 .chart-bar-col:hover .chart-bar-llm, .chart-bar-col:hover .chart-bar-tool {{ opacity: 0.8; }}
 .timing-chart.hide-llm .chart-bar-llm {{ height: 0 !important; min-height: 0 !important; }}
 .timing-chart.hide-tool .chart-bar-tool {{ height: 0 !important; min-height: 0 !important; }}
@@ -197,6 +197,21 @@ INDEX_TEMPLATE = """
 .chart-pxx-legend {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 6px; font-size: 12px; color: #555; }}
 .chart-pxx-legend-item {{ display: flex; align-items: center; gap: 4px; }}
 .chart-pxx-legend-line {{ display: inline-block; width: 16px; border-top: 2px dashed; }}
+.chart-tool-count {{ position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 9px; color: #e65100; font-weight: 600; pointer-events: none; }}
+.chart-bar-fail .chart-bar-tool {{ box-shadow: inset 0 0 0 2px #d32f2f; }}
+.chart-legend-sep {{ width: 1px; height: 16px; background: #ccc; margin: 0 8px; display: inline-block; vertical-align: middle; }}
+.chart-calls-legend {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; font-size: 12px; color: #555; }}
+.chart-calls-legend-item {{ display: flex; align-items: center; gap: 4px; }}
+.chart-calls-legend-dot {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e65100; }}
+.chart-calls-legend-dot.chart-fail-dot {{ background: #d32f2f; }}
+.timing-chart-wrapper.overlay-mode-calls .chart-pxx-line {{ display: none; }}
+.timing-chart-wrapper.overlay-mode-calls .chart-pxx-legend {{ display: none; }}
+.timing-chart-wrapper.overlay-mode-calls .chart-calls-legend {{ display: flex; }}
+.timing-chart-wrapper.overlay-mode-calls .chart-tool-count {{ display: block; }}
+.timing-chart-wrapper.overlay-mode-pxx .chart-pxx-line {{ display: block; }}
+.timing-chart-wrapper.overlay-mode-pxx .chart-pxx-legend {{ display: flex; }}
+.timing-chart-wrapper.overlay-mode-pxx .chart-calls-legend {{ display: none; }}
+.timing-chart-wrapper.overlay-mode-pxx .chart-tool-count {{ display: none; }}
 .chart-x-label {{ font-size: 9px; color: #999; margin-top: 2px; }}
 /* Token Chart */
 .chart-bar-output {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
@@ -465,11 +480,15 @@ INDEX_TEMPLATE = """
                 const llm = el.dataset.llm;
                 const tool = el.dataset.tool;
                 const total = el.dataset.total;
+                const tc = el.dataset.toolCount || '0';
+                const fail = el.dataset.hasFailure === '1';
                 tt.innerHTML = `
                     <div class="tt-name">#${{seq}}</div>
                     <div class="tt-row"><span class="tt-label">LLM Time</span><span class="tt-value">${{llm}}</span></div>
                     <div class="tt-row"><span class="tt-label">Tool Time</span><span class="tt-value">${{tool}}</span></div>
                     <div class="tt-row"><span class="tt-label">Total</span><span class="tt-value">${{total}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Tool Calls</span><span class="tt-value">${{tc}}</span></div>
+                    ${{fail ? '<div class="tt-row" style="color:#d32f2f"><span class="tt-label">Status</span><span class="tt-value">Failed</span></div>' : ''}}
                 `;
             }}
             tt.style.left = (event.clientX + 12) + 'px';
@@ -532,6 +551,15 @@ INDEX_TEMPLATE = """
                     if (legendItem) legendItem.textContent = formatMsDuration(val);
                 }});
             }}
+        }}
+        function toggleChartOverlay(el) {{
+            const mode = el.dataset.overlay;
+            const wrapper = el.closest('.timing-chart-wrapper');
+            if (!wrapper) return;
+            wrapper.querySelectorAll('[data-overlay]').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+            wrapper.classList.remove('overlay-mode-calls', 'overlay-mode-pxx');
+            wrapper.classList.add('overlay-mode-' + mode);
         }}
         function switchTokenAgent(sectionId, idx) {{
             const section = document.getElementById(sectionId);
@@ -831,7 +859,7 @@ SESSION_DETAIL_TEMPLATE = """
 .timing-chart.dense .chart-bar-col {{ min-width: 0; }}
 .chart-bar {{ display: flex; flex-direction: column; width: 100%; justify-content: flex-end; }}
 .chart-bar-llm {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
-.chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
+.chart-bar-tool {{ background: #f57c00; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; position: relative; }}
 .chart-bar-col:hover .chart-bar-llm, .chart-bar-col:hover .chart-bar-tool {{ opacity: 0.8; }}
 .timing-chart.hide-llm .chart-bar-llm {{ height: 0 !important; min-height: 0 !important; }}
 .timing-chart.hide-tool .chart-bar-tool {{ height: 0 !important; min-height: 0 !important; }}
@@ -839,6 +867,21 @@ SESSION_DETAIL_TEMPLATE = """
 .chart-pxx-legend {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 6px; font-size: 12px; color: #555; }}
 .chart-pxx-legend-item {{ display: flex; align-items: center; gap: 4px; }}
 .chart-pxx-legend-line {{ display: inline-block; width: 16px; border-top: 2px dashed; }}
+.chart-tool-count {{ position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 9px; color: #e65100; font-weight: 600; pointer-events: none; }}
+.chart-bar-fail .chart-bar-tool {{ box-shadow: inset 0 0 0 2px #d32f2f; }}
+.chart-legend-sep {{ width: 1px; height: 16px; background: #ccc; margin: 0 8px; display: inline-block; vertical-align: middle; }}
+.chart-calls-legend {{ display: flex; flex-wrap: wrap; gap: 16px; margin-top: 4px; font-size: 12px; color: #555; }}
+.chart-calls-legend-item {{ display: flex; align-items: center; gap: 4px; }}
+.chart-calls-legend-dot {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e65100; }}
+.chart-calls-legend-dot.chart-fail-dot {{ background: #d32f2f; }}
+.timing-chart-wrapper.overlay-mode-calls .chart-pxx-line {{ display: none; }}
+.timing-chart-wrapper.overlay-mode-calls .chart-pxx-legend {{ display: none; }}
+.timing-chart-wrapper.overlay-mode-calls .chart-calls-legend {{ display: flex; }}
+.timing-chart-wrapper.overlay-mode-calls .chart-tool-count {{ display: block; }}
+.timing-chart-wrapper.overlay-mode-pxx .chart-pxx-line {{ display: block; }}
+.timing-chart-wrapper.overlay-mode-pxx .chart-pxx-legend {{ display: flex; }}
+.timing-chart-wrapper.overlay-mode-pxx .chart-calls-legend {{ display: none; }}
+.timing-chart-wrapper.overlay-mode-pxx .chart-tool-count {{ display: none; }}
 .chart-x-label {{ font-size: 9px; color: #999; margin-top: 2px; }}
 /* Token Chart */
 .chart-bar-output {{ background: #4a90d9; border-radius: 2px 2px 0 0; min-height: 1px; transition: opacity 0.15s, height 0.3s; }}
@@ -992,11 +1035,15 @@ SESSION_DETAIL_TEMPLATE = """
                 const llm = el.dataset.llm;
                 const tool = el.dataset.tool;
                 const total = el.dataset.total;
+                const tc = el.dataset.toolCount || '0';
+                const fail = el.dataset.hasFailure === '1';
                 tt.innerHTML = `
                     <div class="tt-name">#${{seq}}</div>
                     <div class="tt-row"><span class="tt-label">LLM Time</span><span class="tt-value">${{llm}}</span></div>
                     <div class="tt-row"><span class="tt-label">Tool Time</span><span class="tt-value">${{tool}}</span></div>
                     <div class="tt-row"><span class="tt-label">Total</span><span class="tt-value">${{total}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Tool Calls</span><span class="tt-value">${{tc}}</span></div>
+                    ${{fail ? '<div class="tt-row" style="color:#d32f2f"><span class="tt-label">Status</span><span class="tt-value">Failed</span></div>' : ''}}
                 `;
             }}
             tt.style.left = (event.clientX + 12) + 'px';
@@ -1059,6 +1106,15 @@ SESSION_DETAIL_TEMPLATE = """
                     if (legendItem) legendItem.textContent = formatMsDuration(val);
                 }});
             }}
+        }}
+        function toggleChartOverlay(el) {{
+            const mode = el.dataset.overlay;
+            const wrapper = el.closest('.timing-chart-wrapper');
+            if (!wrapper) return;
+            wrapper.querySelectorAll('[data-overlay]').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+            wrapper.classList.remove('overlay-mode-calls', 'overlay-mode-pxx');
+            wrapper.classList.add('overlay-mode-' + mode);
         }}
         function switchTokenAgent(sectionId, idx) {{
             const section = document.getElementById(sectionId);

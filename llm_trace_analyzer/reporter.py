@@ -1224,8 +1224,10 @@ class HTMLReporter:
             return sorted_values[f]
         return sorted_values[f] + (k - f) * (sorted_values[c] - sorted_values[f])
 
-    def _render_timing_chart(self, timings: List[IterationTiming]) -> str:
-        """渲染时间分布堆叠柱状图（含 LLM/Tool 切换和 Pxx 参考线）"""
+    def _render_timing_chart(
+        self, timings: List[IterationTiming], chains: Optional[List[LLMChain]] = None
+    ) -> str:
+        """渲染时间分布堆叠柱状图（含 LLM/Tool 切换、Pxx 参考线、工具次数/失败标注）"""
         if not timings:
             return ""
 
@@ -1237,6 +1239,34 @@ class HTMLReporter:
         if max_total <= 0:
             return ""
 
+        # 构建 (session_id, iteration_num) -> (tool_count, has_failure) 映射
+        iter_info: Dict[Tuple[str, int], Tuple[int, bool]] = {}
+        if chains:
+            for chain in chains:
+                resp_tools: Dict[Tuple[str, int], int] = {}
+                for resp in chain.responses:
+                    if resp.tool_calls:
+                        resp_tools[(resp.session_id, resp.iteration)] = len(resp.tool_calls)
+
+                fail_iters: set = set()
+                seen_ids: set = set()
+                for req in chain.requests:
+                    for msg in req.body.get("messages", []):
+                        if msg.get("role") != "tool":
+                            continue
+                        tc_id = msg.get("tool_call_id", "")
+                        if tc_id in seen_ids:
+                            continue
+                        seen_ids.add(tc_id)
+                        content = msg.get("content", "")
+                        if isinstance(content, str) and detect_tool_failure(content)[0]:
+                            fail_iters.add((req.session_id, req.iteration))
+
+                for key, count in resp_tools.items():
+                    sid, iter_num = key
+                    has_fail = key in fail_iters or (sid, iter_num - 1) in fail_iters
+                    iter_info[key] = (count, has_fail)
+
         chart_height = 200
         bars: List[str] = []
         for i, t in enumerate(sorted_timings, 1):
@@ -1247,20 +1277,28 @@ class HTMLReporter:
             llm_fmt = self._format_duration(t.llm_call_duration)
             tool_fmt = self._format_duration(t.tool_processing_duration)
             total_fmt = self._format_duration(t.llm_call_duration + t.tool_processing_duration)
+
+            tool_count, has_failure = iter_info.get((t.session_id, t.iteration_num), (0, False))
+            fail_cls = " chart-bar-fail" if has_failure else ""
+            count_html = ""
+            if tool_count > 0 and tool_h > 2:
+                count_html = f'<span class="chart-tool-count">{tool_count}</span>'
+
             bars.append(
                 f'<div class="chart-bar-col" '
                 f'data-seq="{i}" data-llm-ms="{llm_ms}" data-tool-ms="{tool_ms}" '
                 f'data-llm="{llm_fmt}" data-tool="{tool_fmt}" data-total="{total_fmt}" '
+                f'data-tool-count="{tool_count}" data-has-failure="{1 if has_failure else 0}" '
                 f'onmouseenter="showChartTooltip(event, this)" '
                 f'onmousemove="moveChartTooltip(event)" '
                 f'onmouseleave="hideChartTooltip()">'
-                f'<div class="chart-bar" style="height:{chart_height}px">'
-                f'<div class="chart-bar-tool" style="height:{tool_h:.1f}px"></div>'
+                f'<div class="chart-bar{fail_cls}" style="height:{chart_height}px">'
+                f'<div class="chart-bar-tool" style="height:{tool_h:.1f}px">{count_html}</div>'
                 f'<div class="chart-bar-llm" style="height:{llm_h:.1f}px"></div>'
                 f"</div></div>"
             )
 
-        # 初始 Pxx（LLM+Tool 叠加）
+        # Pxx 参考线（默认隐藏）
         all_totals = sorted(
             t.llm_call_duration + t.tool_processing_duration for t in sorted_timings
         )
@@ -1285,19 +1323,37 @@ class HTMLReporter:
                 f"{label}: <strong>{self._format_duration(val)}</strong></span>"
             )
 
+        # 工具次数/失败统计
+        total_iters = len(sorted_timings)
+        fail_iters_count = sum(1 for _, (_, f) in iter_info.items() if f)
+        calls_legend = (
+            f'<span class="chart-calls-legend-item">'
+            f'<span class="chart-calls-legend-dot"></span>'
+            f"Tool Calls</span>"
+            f'<span class="chart-calls-legend-item">'
+            f'<span class="chart-calls-legend-dot chart-fail-dot"></span>'
+            f"Failed ({fail_iters_count}/{total_iters})</span>"
+        )
+
         chart_id = f"chart_{id(timings) % 10000}"
         dense_class = " dense" if len(sorted_timings) > 100 else ""
 
         return (
-            f'<div class="timing-chart-wrapper" id="{chart_id}">'
+            f'<div class="timing-chart-wrapper overlay-mode-calls" id="{chart_id}">'
             '<div class="chart-legend">'
             f'<div class="chart-legend-item chart-toggle active" data-series="llm" onclick="toggleChartSeries(this)">'
             f'<div class="chart-legend-color chart-legend-llm"></div>LLM Time</div>'
             f'<div class="chart-legend-item chart-toggle active" data-series="tool" onclick="toggleChartSeries(this)">'
             f'<div class="chart-legend-color chart-legend-tool"></div>Tool Time</div>'
+            '<span class="chart-legend-sep"></span>'
+            f'<div class="chart-legend-item chart-toggle active" data-overlay="calls" onclick="toggleChartOverlay(this)">'
+            f"Tool Calls</div>"
+            f'<div class="chart-legend-item chart-toggle" data-overlay="pxx" onclick="toggleChartOverlay(this)">'
+            f"Pxx Lines</div>"
             "</div>"
             f'<div class="timing-chart{dense_class}">{"".join(bars)}{"".join(pxx_lines)}</div>'
             f'<div class="chart-pxx-legend">{"".join(pxx_legend_items)}</div>'
+            f'<div class="chart-calls-legend">{calls_legend}</div>'
             "</div>"
         )
 
@@ -1697,7 +1753,7 @@ class HTMLReporter:
         all_timings = []
         for chain in result.sorted_sessions:
             all_timings.extend(chain.iteration_timings)
-        chart_html = self._render_timing_chart(all_timings)
+        chart_html = self._render_timing_chart(all_timings, result.sorted_sessions)
         if chart_html:
             parts.append(self._stat_section_raw_html("Timing Distribution", chart_html))
 
@@ -1961,7 +2017,7 @@ class HTMLReporter:
         parts.append(self._generate_metrics_tips_html())
 
         # 时间分布图
-        chart_html = self._render_timing_chart(chain.iteration_timings)
+        chart_html = self._render_timing_chart(chain.iteration_timings, [chain])
         if chart_html:
             parts.append(self._stat_section_raw_html("Timing Distribution", chart_html))
 
