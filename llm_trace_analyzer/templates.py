@@ -381,7 +381,7 @@ INDEX_TEMPLATE = """
                 ['工具信息', [
                     ['Tool Time', 'tool_time', 'time', true],
                     ['Avg Tool', 'avg_tool_time', 'time', true],
-                    ['Tool Calls', 'tool_calls', 'number'],
+                    ['Tool Calls', 'tool_calls', 'number', true],
                     ['Tool Failed ⚠', 'failed_tool_calls', 'number', true],
                 ]],
             ];
