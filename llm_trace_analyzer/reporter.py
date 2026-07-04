@@ -1359,13 +1359,34 @@ class HTMLReporter:
                 f"{label}: <strong>{self._format_duration(val)}</strong></span>"
             )
 
+        # 工具调用次数虚线折线（SVG）
+        tool_counts_list = [
+            iter_info.get((t.session_id, t.iteration_num), (0, False))[0]
+            for t in sorted_timings
+        ]
+        max_tc = max(tool_counts_list) if tool_counts_list else 0
+        tc_line_points: List[str] = []
+        if max_tc > 0:
+            for idx, tc in enumerate(tool_counts_list):
+                x_pct = ((idx + 0.5) / len(sorted_timings)) * 100
+                y_pct = 100 - (tc / max_tc) * 90  # 90% max height to leave room
+                tc_line_points.append(f"{x_pct:.1f},{y_pct:.1f}")
+
+        tc_svg = ""
+        if len(tc_line_points) >= 2:
+            pts = " ".join(tc_line_points)
+            tc_svg = (
+                f'<svg class="chart-tc-svg" viewBox="0 0 100 100" preserveAspectRatio="none">'
+                f'<polyline points="{pts}" /></svg>'
+            )
+
         # 工具次数/失败统计
         total_iters = len(sorted_timings)
         fail_iters_count = sum(1 for _, (_, f) in iter_info.items() if f)
         calls_legend = (
             f'<span class="chart-calls-legend-item">'
-            f'<span class="chart-calls-legend-dot"></span>'
-            f"Tool Calls</span>"
+            f'<span class="chart-calls-legend-line"></span>'
+            f"Tool Calls (max: {max_tc})</span>"
             f'<span class="chart-calls-legend-item">'
             f'<span class="chart-calls-legend-dot chart-fail-dot"></span>'
             f"Failed ({fail_iters_count}/{total_iters})</span>"
@@ -1387,7 +1408,7 @@ class HTMLReporter:
             f'<div class="chart-legend-item chart-toggle" data-overlay="pxx" onclick="toggleChartOverlay(this)">'
             f"Pxx Lines</div>"
             "</div>"
-            f'<div class="timing-chart{dense_class}">{"".join(bars)}{"".join(pxx_lines)}</div>'
+            f'<div class="timing-chart{dense_class}">{"".join(bars)}{"".join(pxx_lines)}{tc_svg}</div>'
             f'<div class="chart-pxx-legend">{"".join(pxx_legend_items)}</div>'
             f'<div class="chart-calls-legend">{calls_legend}</div>'
             "</div>"
