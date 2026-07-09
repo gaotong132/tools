@@ -187,7 +187,7 @@ class HTMLReporter:
         iterations_html = self._render_agent_flow(chain.session_id, chain)
 
         # Render Gantt timeline and timing list
-        gantt_html = self._generate_gantt_html(chain) if chain.subagents else ""
+        gantt_html = self._generate_gantt_html(chain)
         timing_list_html = self._generate_timing_list_html(chain)
 
         # Session 级别统计
