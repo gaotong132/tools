@@ -1,83 +1,48 @@
-"""测试配置"""
+"""Shared test fixtures for the LLM trace analyzer.
+
+Most tests use tiny synthetic inputs from :mod:`tests.trace_factory`.  The
+captured production log is deliberately loaded only by the contract tests.
+"""
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Tuple
 
 import pytest
-import sys
-from pathlib import Path
 
-from llm_trace_analyzer.loader import LogLoader
-from llm_trace_analyzer.parser import TraceParser
 from llm_trace_analyzer.analyzer import ChainAnalyzer
+from llm_trace_analyzer.loader import LogLoader
+from llm_trace_analyzer.models import AnalysisResult, LLMRequest, LLMResponse, SystemMetrics
+from llm_trace_analyzer.parser import TraceParser
 
-# 添加项目根目录到路径
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-# 测试数据路径
-FIXTURES_DIR = project_root / "tests" / "fixtures"
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_LOG = FIXTURES_DIR / "llm_trace_b2fbb87bbeeb.log"
-
-# 预期值（基于精简日志）
-EXPECTED_SESSION_ID = "officeclaw_b2fbb87bbeebde489553cb50"
-EXPECTED_SHORT_ID = "b2fbb87bbeeb"
-EXPECTED_MODEL_NAME = "glm-5"
-
-# 解析阶段预期值
-EXPECTED_TRACE_COUNT = 836
-EXPECTED_PARSE_REQUESTS = 37  # 各 session 独立计数
-EXPECTED_PARSE_RESPONSES = 37
-
-# 分析阶段预期值（合并后的 chain）
-EXPECTED_CHAIN_REQUESTS = 43
-EXPECTED_CHAIN_RESPONSES = 43
-EXPECTED_CHAIN_ITERATIONS = 43
-
-# Subagent 数量
-EXPECTED_SUBAGENT_COUNT = 9
-
-# 预期的统计信息
-EXPECTED_TOTAL_ITERATIONS = EXPECTED_CHAIN_ITERATIONS
-
-# Subagent session IDs
-EXPECTED_SUBAGENT_SESSIONS = [
-    "officeclaw_b2fbb87bbeebde489553cb50_subagent_ade2a651",
-    "officeclaw_b2fbb87bbeebde489553cb50_subagent_dceb49b5",
-    "officeclaw_b2fbb87bbeebde489553cb50_subagent_131f0848",
-    "officeclaw_b2fbb87bbeebde489553cb50_subagent_ade2a651_fork_agent_0e4cf63b",
-    "officeclaw_b2fbb87bbeebde489553cb50_subagent_ade2a651_fork_agent_82d818e3",
-    "officeclaw_b2fbb87bbeebde489553cb50_subagent_ade2a651_fork_agent_ab88ae4e",
-]
+SAMPLE_SESSION_ID = "officeclaw_b2fbb87bbeebde489553cb50"
+SAMPLE_SHORT_ID = "b2fbb87bbeeb"
 
 
-@pytest.fixture
-def loader():
-    """日志加载器 fixture"""
-    return LogLoader(str(SAMPLE_LOG))
+@dataclass(frozen=True)
+class ParsedFixture:
+    loader: LogLoader
+    parser: TraceParser
+    traces: List[dict]
+    requests: Dict[str, List[LLMRequest]]
+    responses: Dict[str, List[LLMResponse]]
+    metrics: Dict[Tuple[str, int], List[SystemMetrics]]
+    result: AnalysisResult
 
 
-@pytest.fixture
-def traces(loader):
-    """traces fixture"""
-    return loader.load()
-
-
-@pytest.fixture
-def parser_data(traces):
-    """解析数据 fixture"""
+@pytest.fixture(scope="session")
+def captured_session() -> ParsedFixture:
+    """Parse the captured log once for slow, end-to-end contract tests."""
+    loader = LogLoader(str(SAMPLE_LOG), load_rollover=False)
+    traces = loader.load()
     parser = TraceParser(traces)
-    requests, responses, _system_metrics = parser.parse()
-    return requests, responses
-
-
-@pytest.fixture
-def analyzer_data(parser_data):
-    """分析数据 fixture"""
-    requests, responses = parser_data
-    analyzer = ChainAnalyzer(requests, responses)
-    result = analyzer.analyze()
-    return result
-
-
-@pytest.fixture
-def report_data(analyzer_data):
-    """报告数据 fixture"""
-    return analyzer_data
+    requests, responses, metrics = parser.parse()
+    result = ChainAnalyzer(
+        requests,
+        responses,
+        metrics,
+        tool_executions=loader.tool_executions,
+    ).analyze()
+    return ParsedFixture(loader, parser, traces, requests, responses, metrics, result)

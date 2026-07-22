@@ -1,208 +1,237 @@
-"""测试 ChainAnalyzer 模块"""
+"""Behavioral tests for chain assembly and statistics."""
 
 import pytest
 
-from llm_trace_analyzer.loader import LogLoader
-from llm_trace_analyzer.parser import TraceParser
 from llm_trace_analyzer.analyzer import ChainAnalyzer
-from tests.conftest import (
-    SAMPLE_LOG,
-    EXPECTED_SESSION_ID,
-    EXPECTED_SHORT_ID,
-    EXPECTED_MODEL_NAME,
-    EXPECTED_CHAIN_ITERATIONS,
-    EXPECTED_TOTAL_ITERATIONS,
-    EXPECTED_SUBAGENT_SESSIONS,
-)
+from llm_trace_analyzer.models import CallStatus
+from tests.trace_factory import execution, request, response
 
 
-class TestChainAnalyzer:
-    """测试链路分析器"""
-
-    @pytest.fixture
-    def analysis_result(self):
-        """准备分析结果"""
-        loader = LogLoader(str(SAMPLE_LOG))
-        traces = loader.load()
-        parser = TraceParser(traces)
-        requests, responses, _system_metrics = parser.parse()
-
-        analyzer = ChainAnalyzer(requests, responses)
-        return analyzer.analyze()
-
-    def test_analyze_returns_result(self, analysis_result):
-        """测试分析返回结果"""
-        assert analysis_result is not None
-        assert hasattr(analysis_result, "sessions")
-        assert hasattr(analysis_result, "statistics")
-        assert hasattr(analysis_result, "sorted_sessions")
-
-    def test_main_session_exists(self, analysis_result):
-        """测试主 session 存在"""
-        assert EXPECTED_SESSION_ID in analysis_result.sessions
-
-    def test_session_chain_fields(self, analysis_result):
-        """测试 session chain 字段"""
-        chain = analysis_result.sessions.get(EXPECTED_SESSION_ID)
-        if chain:
-            assert hasattr(chain, "session_id")
-            assert hasattr(chain, "model_name")
-            assert hasattr(chain, "requests")
-            assert hasattr(chain, "responses")
-            assert hasattr(chain, "start_time")
-            assert hasattr(chain, "end_time")
-            assert hasattr(chain, "total_iterations")
-            assert hasattr(chain, "subagents")
-            assert hasattr(chain, "iteration_timings")
-
-    def test_model_name(self, analysis_result):
-        """测试模型名称"""
-        chain = analysis_result.sessions.get(EXPECTED_SESSION_ID)
-        if chain:
-            assert chain.model_name == EXPECTED_MODEL_NAME
-
-    def test_iteration_count(self, analysis_result):
-        """测试迭代数量"""
-        chain = analysis_result.sessions.get(EXPECTED_SESSION_ID)
-        if chain:
-            assert chain.total_iterations == EXPECTED_CHAIN_ITERATIONS
-
-    def test_subagents_identified(self, analysis_result):
-        """测试 subagent 识别"""
-        chain = analysis_result.sessions.get(EXPECTED_SESSION_ID)
-        if chain:
-            # 应识别出 subagent
-            assert len(chain.subagents) > 0
-
-    def test_subagent_session_ids(self, analysis_result):
-        """测试 subagent session_id 格式"""
-        chain = analysis_result.sessions.get(EXPECTED_SESSION_ID)
-        if chain and chain.subagents:
-            for sa in chain.subagents:
-                # 新格式：包含 _subagent_ 或 _fork_agent_
-                assert "_subagent_" in sa.session_id or "_fork_agent_" in sa.session_id
-
-    def test_iteration_timings(self, analysis_result):
-        """测试迭代时间统计"""
-        chain = analysis_result.sessions.get(EXPECTED_SESSION_ID)
-        if chain:
-            timings = chain.iteration_timings
-            assert len(timings) > 0
-
-            # 检查第一个 timing 字段
-            first_timing = timings[0]
-            assert hasattr(first_timing, "iteration_num")
-            assert hasattr(first_timing, "llm_call_duration")
-            assert hasattr(first_timing, "tool_processing_duration")
-
-    def test_timing_values(self, analysis_result):
-        """测试时间统计值"""
-        chain = analysis_result.sessions.get(EXPECTED_SESSION_ID)
-        if chain:
-            # LLM 时间总和应大于 0
-            assert chain.total_llm_duration_seconds > 0
-            # Tool 时间总和
-            assert chain.total_tool_duration_seconds >= 0
-
-    def test_statistics(self, analysis_result):
-        """测试统计信息"""
-        stats = analysis_result.statistics
-        assert stats.total_sessions == 1
-        assert stats.total_iterations == EXPECTED_TOTAL_ITERATIONS
-
-    def test_sorted_sessions(self, analysis_result):
-        """测试排序后的 sessions"""
-        sorted_sessions = analysis_result.sorted_sessions
-        assert len(sorted_sessions) == 1
-        assert sorted_sessions[0].session_id == EXPECTED_SESSION_ID
+def analyze(requests, responses, *, executions=None):
+    return ChainAnalyzer(requests, responses, tool_executions=executions).analyze()
 
 
-class TestChainAnalyzerSubagentDepth:
-    """测试 subagent 深度计算"""
+def test_nested_agents_are_merged_once_with_direct_parent_metadata():
+    root = "root"
+    child = "root_subagent_child"
+    fork = "root_subagent_child_fork_agent_fork"
+    requests = {
+        root: [request("root-call", 1, session_id=root)],
+        child: [request("child-call", 2, session_id=child)],
+        fork: [request("fork-call", 3, session_id=fork)],
+    }
+    responses = {
+        root: [response("root-call", 4, session_id=root)],
+        child: [response("child-call", 5, session_id=child)],
+        fork: [response("fork-call", 6, session_id=fork)],
+    }
 
-    @pytest.fixture
-    def analyzer(self):
-        """准备分析器"""
-        loader = LogLoader(str(SAMPLE_LOG))
-        traces = loader.load()
-        parser = TraceParser(traces)
-        requests, responses, _system_metrics = parser.parse()
+    result = analyze(requests, responses)
+    chain = result.sessions[root]
 
-        return ChainAnalyzer(requests, responses)
-
-    def test_compute_subagent_depth(self, analyzer):
-        """测试深度计算"""
-        # 使用新格式的 task_id 测试
-        task_id = "officeclaw_b2fbb87bbeebde489553cb50_subagent_ade2a651"
-        depth, chain_path, direct_parent = analyzer._compute_subagent_depth(task_id)
-
-        assert depth >= 0
-        assert len(chain_path) > 0
-        assert "Main" in chain_path or any("Sub" in p for p in chain_path)
-
-    def test_fork_agent_depth(self, analyzer):
-        """测试 fork_agent 深度"""
-        task_id = "officeclaw_b2fbb87bbeebde489553cb50_subagent_ade2a651_fork_agent_0e4cf63b"
-        depth, chain_path, direct_parent = analyzer._compute_subagent_depth(task_id)
-
-        # fork_agent 嵌套在 subagent 下，深度应 >= 0
-        assert depth >= 0
-        # chain_path 应包含 Fork
-        assert any("Fork" in p or "Sub" in p for p in chain_path)
-
-    def test_format_chain_label(self, analyzer):
-        """测试链路标签格式化"""
-        chain_path = ["Parent", "Sub[ade2a651]", "Fork[0e4cf63b]"]
-        label = analyzer._format_chain_label(chain_path)
-
-        assert "→" in label
-        assert "Parent" in label
-        assert "Sub" in label
-        assert "Fork" in label
-
-    def test_find_root_parent(self, analyzer):
-        """测试查找根父 session"""
-        # 嵌套的 fork_agent session
-        nested_session = "officeclaw_b2fbb87bbeebde489553cb50_subagent_ade2a651_fork_agent_0e4cf63b"
-        root = analyzer._find_root_parent(nested_session)
-
-        # 根应是主 session
-        assert root == EXPECTED_SESSION_ID or "_subagent_" not in root
+    assert list(result.sessions) == [root]
+    assert [(item.session_id, item.event_id) for item in chain.requests] == [
+        (root, "root-call"),
+        (child, "child-call"),
+        (fork, "fork-call"),
+    ]
+    assert [(item.session_id, item.parent_session_id, item.depth) for item in chain.subagents] == [
+        (child, root, 0),
+        (fork, child, 1),
+    ]
+    assert chain.subagents[1].chain_path == ["Main", "Sub[child]", "Fork[fork]"]
 
 
-class TestChainAnalyzerTiming:
-    """测试时间统计计算"""
+def test_parallel_event_ids_produce_independent_durations():
+    requests = {
+        "root": [
+            request("slow", 0, session_id="root", iteration=0),
+            request("fast", 0.2, session_id="root", iteration=0),
+        ]
+    }
+    responses = {
+        "root": [
+            response("fast", 1, session_id="root", iteration=0),
+            response("slow", 5, session_id="root", iteration=0),
+        ]
+    }
 
-    @pytest.fixture
-    def timing_data(self):
-        """准备时间数据"""
-        loader = LogLoader(str(SAMPLE_LOG))
-        traces = loader.load()
-        parser = TraceParser(traces)
-        requests, responses, _system_metrics = parser.parse()
+    timings = analyze(requests, responses).sessions["root"].iteration_timings
 
-        analyzer = ChainAnalyzer(requests, responses)
-        result = analyzer.analyze()
+    assert {item.event_id: item.llm_call_duration for item in timings} == pytest.approx(
+        {"slow": 5, "fast": 0.8}
+    )
+    assert all(item.status is CallStatus.COMPLETE for item in timings)
 
-        chain = result.sessions.get(EXPECTED_SESSION_ID)
-        return chain.iteration_timings if chain else []
 
-    def test_timing_iteration_nums(self, timing_data):
-        """测试迭代编号连续"""
-        if timing_data:
-            nums = [t.iteration_num for t in timing_data]
-            assert nums[0] == 1
-            assert nums[-1] == len(nums)
+def test_call_completeness_statuses_are_explicit_and_statistics_use_completed_calls():
+    requests = {
+        "root": [
+            request("complete", 1, session_id="root", iteration=1),
+            request("request-only", 2, session_id="root", iteration=2),
+            request("invalid", 8, session_id="root", iteration=3),
+        ]
+    }
+    responses = {
+        "root": [
+            response("complete", 3, session_id="root", iteration=1),
+            response("response-only", 4, session_id="root", iteration=4),
+            response("invalid", 7, session_id="root", iteration=3),
+        ]
+    }
 
-    def test_timing_llm_duration(self, timing_data):
-        """测试 LLM 时间"""
-        if timing_data:
-            # 大部分迭代应有 LLM 时间
-            with_llm = [t for t in timing_data if t.llm_call_duration > 0]
-            assert len(with_llm) > 0
+    result = analyze(requests, responses)
+    statuses = {
+        timing.event_id: timing.status for timing in result.sessions["root"].iteration_timings
+    }
 
-    def test_timing_session_id(self, timing_data):
-        """测试 timing 的 session_id"""
-        if timing_data:
-            for t in timing_data[:5]:
-                assert t.session_id != ""
+    assert statuses == {
+        "complete": CallStatus.COMPLETE,
+        "request-only": CallStatus.REQUEST_ONLY,
+        "response-only": CallStatus.RESPONSE_ONLY,
+        "invalid": CallStatus.INVALID,
+    }
+    assert result.statistics.completed_calls == 1
+    assert result.statistics.incomplete_calls == 2
+    assert result.statistics.invalid_calls == 1
+    assert result.statistics.avg_llm_time_seconds == pytest.approx(2)
+
+
+def test_tool_duration_uses_telemetry_and_excludes_delegation_from_total():
+    tool_calls = [
+        {"id": "bash-call", "name": "bash"},
+        {"id": "spawn-call", "name": "spawn_subagent"},
+        {"id": "unmeasured", "name": "python"},
+    ]
+    result = analyze(
+        {"root": [request("call", 1, session_id="root")]},
+        {"root": [response("call", 2, session_id="root", tool_calls=tool_calls)]},
+        executions=[
+            execution("bash-call", 0.4, tool_name="bash"),
+            execution("spawn-call", 10, tool_name="spawn_subagent"),
+        ],
+    )
+    timing = result.sessions["root"].iteration_timings[0]
+
+    assert [item.tool_call_id for item in timing.tool_executions] == ["bash-call", "spawn-call"]
+    assert timing.tool_processing_duration == pytest.approx(0.4)
+    assert result.statistics.total_tool_time_seconds == pytest.approx(0.4)
+    assert result.statistics.tool_call_counts == {"bash": 1, "spawn_subagent": 1, "python": 1}
+
+
+def test_chain_bounds_include_measured_tool_completion():
+    result = analyze(
+        {"root": [request("call", 10, session_id="root")]},
+        {
+            "root": [
+                response(
+                    "call",
+                    12,
+                    session_id="root",
+                    tool_calls=[{"id": "tool", "name": "bash"}],
+                )
+            ]
+        },
+        executions=[execution("tool", 3, start_time=12)],
+    )
+    chain = result.sessions["root"]
+    assert (chain.start_time, chain.end_time) == (10, 15)
+    assert result.statistics.total_duration_seconds == 5
+
+
+def test_last_iteration_is_marked_per_session_in_interleaved_chain():
+    child = "root_subagent_child"
+    result = analyze(
+        {
+            "root": [
+                request("root-1", 1, session_id="root"),
+                request("root-2", 5, session_id="root"),
+            ],
+            child: [
+                request("child-1", 2, session_id=child),
+                request("child-2", 3, session_id=child),
+            ],
+        },
+        {
+            "root": [
+                response("root-1", 1.5, session_id="root"),
+                response("root-2", 6, session_id="root"),
+            ],
+            child: [
+                response("child-1", 2.5, session_id=child),
+                response("child-2", 4, session_id=child),
+            ],
+        },
+    )
+    timings = result.sessions["root"].iteration_timings
+    assert [item.event_id for item in timings if item.is_last_iteration] == ["child-2", "root-2"]
+
+
+def test_standalone_legacy_subagent_has_complete_timing_statistics():
+    session = "subagent_legacy"
+    result = analyze(
+        {session: [request("call", 1, session_id=session)]},
+        {session: [response("call", 3, session_id=session)]},
+    )
+    chain = result.sessions[session]
+    assert chain.is_subagent
+    assert chain.total_iterations == 1
+    assert chain.total_llm_duration_seconds == 2
+    assert result.statistics.total_sessions == 0
+
+
+def test_analyze_is_idempotent_without_duplicate_relations():
+    child = "root_subagent_child"
+    analyzer = ChainAnalyzer(
+        {
+            "root": [request("root", 1, session_id="root")],
+            child: [request("child", 2, session_id=child)],
+        },
+        {
+            "root": [response("root", 3, session_id="root")],
+            child: [response("child", 4, session_id=child)],
+        },
+    )
+
+    first = analyzer.analyze().sessions["root"]
+    second = analyzer.analyze().sessions["root"]
+
+    assert [item.task_id for item in first.subagents] == [child]
+    assert [item.task_id for item in second.subagents] == [child]
+    assert len(second.requests) == 2
+
+
+def test_token_and_tool_failure_statistics_are_aggregated_once():
+    tool_result = {
+        "role": "tool",
+        "tool_call_id": "failed",
+        "content": "bash operation execution error, execution: run, reason: failed",
+    }
+    result = analyze(
+        {
+            "root": [
+                request(
+                    "second",
+                    3,
+                    session_id="root",
+                    messages=[tool_result],
+                )
+            ]
+        },
+        {
+            "root": [
+                response(
+                    "second",
+                    4,
+                    session_id="root",
+                    tool_calls=[{"id": "failed", "name": "bash"}],
+                    input_tokens=10,
+                    output_tokens=5,
+                )
+            ]
+        },
+    )
+    stats = result.statistics
+    assert (stats.total_input_tokens, stats.total_output_tokens, stats.total_tokens) == (10, 5, 15)
+    assert stats.failed_tool_calls == 1
+    assert stats.tool_failure_counts == {"bash": 1}

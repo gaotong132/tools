@@ -16,6 +16,7 @@ _USAGE_FLOAT_NAME_RE = re.compile(r"(input_cost|output_cost|total_cost)=([\d.]+)
 class TraceParser:
     def __init__(self, traces: List[Dict[str, Any]]):
         self.traces = traces
+        self.diagnostics: Dict[str, int] = defaultdict(int)
 
     def parse(
         self,
@@ -24,6 +25,7 @@ class TraceParser:
         Dict[str, List[LLMResponse]],
         Dict[Tuple[str, int], List[SystemMetrics]],
     ]:
+        self.diagnostics.clear()
         grouped = self._group_traces()
 
         requests: Dict[str, List[LLMRequest]] = {}
@@ -83,6 +85,10 @@ class TraceParser:
             reasoning = [
                 t for t in event_traces if t["event"] == TraceEventType.REASONING_DELTA.value
             ]
+            if not req:
+                self.diagnostics["response_only_event_groups"] += 1
+            if not out:
+                self.diagnostics["request_only_event_groups"] += 1
             start = min(t["timestamp"] for t in event_traces)
             call_groups.append((start, event_id, req, out, reasoning))
 
@@ -101,13 +107,20 @@ class TraceParser:
                 req = request_groups[index] if index < len(request_groups) else []
                 out = output_groups[index] if index < len(output_groups) else []
                 reference = min((t["timestamp"] for t in out or req), default=0.0)
-                reasoning = min(
-                    reasoning_groups,
-                    key=lambda group: abs(
-                        sum(t["timestamp"] for t in group) / len(group) - reference
-                    ),
-                    default=[],
-                )
+                reasoning = []
+                if reasoning_groups:
+                    candidate = min(
+                        reasoning_groups,
+                        key=lambda group: abs(
+                            sum(t["timestamp"] for t in group) / len(group) - reference
+                        ),
+                    )
+                    distance = abs(
+                        sum(t["timestamp"] for t in candidate) / len(candidate) - reference
+                    )
+                    if distance < 120:
+                        reasoning = candidate
+                        reasoning_groups.remove(candidate)
                 start = min((t["timestamp"] for t in req or out or reasoning), default=0.0)
                 call_groups.append((start, "", req, out, reasoning))
 
@@ -197,6 +210,7 @@ class TraceParser:
         try:
             body_dict = json.loads(merged_body)
         except json.JSONDecodeError:
+            self.diagnostics["request_json_errors"] += 1
             return None
 
         timestamp = traces[0]["timestamp"] if traces else 0
@@ -222,19 +236,31 @@ class TraceParser:
 
     @staticmethod
     def _detect_call_kind(messages: List[Dict[str, Any]], tools: List[Dict[str, Any]]) -> str:
-        text = "\n".join(str(message.get("content", "")) for message in messages)
-        if "You are a session memory updater" in text:
+        first = messages[0] if messages else {}
+        first_content = str(first.get("content", ""))
+        if first.get("role") == "system" and first_content.startswith(
+            "You are a session memory updater"
+        ):
             return "session_memory"
-        if "Summarize each numbered block" in text:
+        if (
+            len(messages) == 1
+            and not tools
+            and first.get("role") == "user"
+            and "Summarize each numbered block" in first_content
+        ):
             return "context_summary"
-        if "CRITICAL: Respond with TEXT ONLY" in text and not tools:
+        if (
+            first.get("role") == "system"
+            and first_content.startswith("CRITICAL: Respond with TEXT ONLY")
+            and not tools
+        ):
             return "context_compaction"
         internal_keywords = (
             "安全工具调用解析器",
             "file_guard.extract",
             "command_intent",
         )
-        if not tools and any(keyword in text for keyword in internal_keywords):
+        if not tools and any(keyword in first_content for keyword in internal_keywords):
             return "framework_internal"
         return "agent"
 
@@ -253,7 +279,7 @@ class TraceParser:
             try:
                 body_dict = json.loads(merged_body)
             except json.JSONDecodeError:
-                pass
+                self.diagnostics["response_json_errors"] += 1
 
         # 如果 output 和 reasoning 都为空，跳过
         reasoning_merged = self._merge_reasoning(reasoning_traces)
@@ -263,7 +289,7 @@ class TraceParser:
         timestamp = (
             max(t["timestamp"] for t in output_traces)
             if output_traces
-            else (reasoning_traces[0]["timestamp"] if reasoning_traces else 0)
+            else (max(t["timestamp"] for t in reasoning_traces) if reasoning_traces else 0)
         )
         model_name = (
             output_traces[0]["model_name"]
@@ -333,6 +359,11 @@ class TraceParser:
 
         if with_parts:
             sorted_traces = sorted(with_parts, key=lambda t: t["body_part"][0])
+            totals = {t["body_part"][1] for t in sorted_traces}
+            indexes = [t["body_part"][0] for t in sorted_traces]
+            expected_total = max(totals) if totals else 0
+            if len(totals) != 1 or sorted(set(indexes)) != list(range(1, expected_total + 1)):
+                self.diagnostics["incomplete_body_groups"] += 1
             merged = "".join(str(t["body_str"]) for t in sorted_traces)
             return merged
 

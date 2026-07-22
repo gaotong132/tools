@@ -26,7 +26,7 @@ class LLMTraceAnalyzer:
     ) -> bool:
         try:
             loader = LogLoader(self.file_path)
-            traces = loader.load()
+            traces = loader.load(session_filter=session_filter)
         except FileNotFoundError as e:
             print(f"Error: {e}")
             return False
@@ -41,13 +41,35 @@ class LLMTraceAnalyzer:
         parser = TraceParser(traces)
         requests, responses, system_metrics = parser.parse()
 
+        tool_executions = loader.tool_executions
+        if session_filter:
+            relevant_tool_ids = {
+                tool_call.get("id", "")
+                for session_responses in responses.values()
+                for response in session_responses
+                for tool_call in response.tool_calls
+                if tool_call.get("id")
+            }
+            tool_executions = [
+                execution
+                for execution in tool_executions
+                if execution.tool_call_id in relevant_tool_ids
+            ]
+
         analyzer = ChainAnalyzer(
             requests,
             responses,
             system_metrics,
-            tool_executions=loader.tool_executions,
+            tool_executions=tool_executions,
         )
         result = analyzer.analyze()
+        loader_diagnostics = dict(loader.diagnostics)
+        if session_filter:
+            # Telemetry 完成行没有 session/call_id，无法把全局未匹配数归因到单一 session。
+            loader_diagnostics.pop("unmatched_tool_starts", None)
+            loader_diagnostics.pop("unmatched_tool_ends", None)
+        result.diagnostics.update(loader_diagnostics)
+        result.diagnostics.update(parser.diagnostics)
 
         if session_filter:
             result = self._filter_result_for_session(result, session_filter)
@@ -64,7 +86,7 @@ class LLMTraceAnalyzer:
     def _filter_traces_for_session(self, traces: list, session_filter: str) -> list:
         parent_traces = [t for t in traces if t["session_id"] == session_filter]
 
-        subagent_session_ids = set()
+        subagent_session_ids: set[str] = set()
         self._collect_subagent_sessions(session_filter, traces, subagent_session_ids)
 
         subagent_traces = [t for t in traces if t["session_id"] in subagent_session_ids]
@@ -97,6 +119,7 @@ class LLMTraceAnalyzer:
             filtered.sessions[session_filter] = result.sessions[session_filter]
         filtered.sorted_sessions = list(filtered.sessions.values())
         filtered.statistics = result.statistics
+        filtered.diagnostics = dict(result.diagnostics)
         return filtered
 
     def _print_summary(self, result: AnalysisResult) -> None:
@@ -115,7 +138,7 @@ class LLMTraceAnalyzer:
         print("=" * 40)
 
 
-def main():
+def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Analyze LLM_IO_TRACE logs and generate visualization report",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -159,7 +182,7 @@ Examples:
         help="Open report in browser after generation",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     log_path: Path
     if args.log_file:
@@ -169,7 +192,7 @@ Examples:
         if found_path is None:
             default_path = Path.home() / DEFAULT_LOGS_DIR / DEFAULT_LOG_FILE
             print(f"Error: No log file found. Default path: {default_path}")
-            sys.exit(1)
+            return 1
         log_path = found_path
         print(f"Using log file: {log_path}")
 
@@ -194,9 +217,8 @@ Examples:
         if index_file.exists():
             webbrowser.open(str(index_file))
 
-    if not success:
-        sys.exit(1)
+    return 0 if success else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

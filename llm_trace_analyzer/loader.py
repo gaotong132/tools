@@ -29,7 +29,7 @@ LOG_LINE_PATTERN = re.compile(
     r"\[LLM_IO_TRACE\]\s+" + _TRACE_BODY_PATTERN
 )
 ROLLOVER_PATTERN = re.compile(r"^full_\d{8}_\d{6}\.log$")
-_LINE_TIMESTAMP_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)")
+_LINE_TIMESTAMP_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\s+\[(\d+)\]")
 _TOOL_START_PATTERN = re.compile(
     r"\[TelemetryRail\]\s+工具调用开始:\s*tool=([^,]+),\s*tool_call_id=([^,\s]+)"
 )
@@ -57,7 +57,8 @@ def find_rollover_files(log_path: Path) -> List[Path]:
             all_files.append(file_path)
 
     # 按文件名排序（时间戳在文件名中，排序后即为时间顺序）
-    all_files.sort(key=lambda p: p.name)
+    # Rotated files contain older entries; the live full.log belongs last.
+    all_files.sort(key=lambda p: (p.name == "full.log", p.name))
 
     return all_files if all_files else [log_path]
 
@@ -67,13 +68,15 @@ class LogLoader:
         self.file_path = Path(file_path)
         self.load_rollover = load_rollover
         self.tool_executions: List[ToolExecution] = []
-        self._tool_starts: List[Tuple[float, str, str]] = []
-        self._tool_ends: List[Tuple[float, str, float]] = []
+        self._tool_starts: List[Tuple[float, str, str, str]] = []
+        self._tool_ends: List[Tuple[float, str, float, str]] = []
+        self.diagnostics: Dict[str, int] = {}
 
-    def load(self) -> List[Dict[str, Any]]:
+    def load(self, session_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         self.tool_executions = []
         self._tool_starts = []
         self._tool_ends = []
+        self.diagnostics = {}
         # 查找所有绕接文件
         if self.load_rollover:
             log_files = find_rollover_files(self.file_path)
@@ -86,6 +89,12 @@ class LogLoader:
         for log_file in log_files:
             try:
                 traces = self._load_single_file(log_file)
+                if session_filter:
+                    traces = [
+                        trace
+                        for trace in traces
+                        if self._belongs_to_session(trace.get("session_id", ""), session_filter)
+                    ]
                 all_traces.extend(traces)
             except FileNotFoundError as e:
                 if log_file == self.file_path:
@@ -93,11 +102,37 @@ class LogLoader:
                 # 绕接文件不存在时跳过
                 continue
 
-        # 按时间戳排序
+        # rollover 边界可能重复写入同一条 trace，按轻量签名去重。
+        deduplicated = []
+        seen = set()
+        for trace in all_traces:
+            signature = (
+                trace.get("timestamp"),
+                trace.get("event"),
+                trace.get("event_id"),
+                trace.get("session_id"),
+                trace.get("request_id"),
+                trace.get("body_part"),
+                trace.get("reasoning_seq"),
+                trace.get("body_str", ""),
+            )
+            if signature in seen:
+                continue
+            seen.add(signature)
+            deduplicated.append(trace)
+        self.diagnostics["duplicate_traces"] = len(all_traces) - len(deduplicated)
+        all_traces = deduplicated
+
         all_traces.sort(key=lambda t: t.get("timestamp", 0))
         self.tool_executions = self._match_tool_executions()
 
         return all_traces
+
+    @staticmethod
+    def _belongs_to_session(session_id: str, parent_session: str) -> bool:
+        return session_id == parent_session or session_id.startswith(
+            (parent_session + "_subagent_", parent_session + "_fork_agent_")
+        )
 
     def _load_single_file(self, file_path: Path) -> List[Dict[str, Any]]:
         """加载单个日志文件"""
@@ -122,7 +157,8 @@ class LogLoader:
 
             message = entry.get("message", "")
             timestamp = self._parse_json_timestamp(entry)
-            self._parse_telemetry_line(message, timestamp)
+            process_id = str(entry.get("process_id", entry.get("process", "")))
+            self._parse_telemetry_line(message, timestamp, process_id)
             if TRACE_MARKER not in message:
                 continue
 
@@ -139,7 +175,8 @@ class LogLoader:
         for line in f:
             line = line.strip()
             timestamp = self._parse_log_timestamp(line)
-            self._parse_telemetry_line(line, timestamp)
+            process_id = self._parse_log_process_id(line)
+            self._parse_telemetry_line(line, timestamp, process_id)
             if TRACE_MARKER not in line:
                 continue
 
@@ -160,31 +197,42 @@ class LogLoader:
         except ValueError:
             return 0.0
 
-    def _parse_telemetry_line(self, line: str, timestamp: float) -> None:
+    @staticmethod
+    def _parse_log_process_id(line: str) -> str:
+        match = _LINE_TIMESTAMP_PATTERN.match(line)
+        return match.group(2) if match else ""
+
+    def _parse_telemetry_line(self, line: str, timestamp: float, process_id: str = "") -> None:
         """收集 TelemetryRail 生命周期；完成行没有 call id，稍后统一匹配。"""
         if not timestamp or "[TelemetryRail]" not in line:
             return
         start = _TOOL_START_PATTERN.search(line)
         if start:
-            self._tool_starts.append((timestamp, start.group(1).strip(), start.group(2).strip()))
+            self._tool_starts.append(
+                (timestamp, start.group(1).strip(), start.group(2).strip(), process_id)
+            )
             return
         end = _TOOL_END_PATTERN.search(line)
         if end:
             duration = float(end.group(2))
             if end.group(3) == "ms":
                 duration /= 1000.0
-            self._tool_ends.append((timestamp, end.group(1).strip(), duration))
+            self._tool_ends.append((timestamp, end.group(1).strip(), duration, process_id))
 
     def _match_tool_executions(self) -> List[ToolExecution]:
         """按工具名及 `结束时间-记录耗时` 匹配缺少 call id 的完成事件。"""
         unmatched = set(range(len(self._tool_starts)))
+        starts_by_key: Dict[Tuple[str, str], List[int]] = {}
+        for index, (_, tool_name, _, process_id) in enumerate(self._tool_starts):
+            starts_by_key.setdefault((process_id, tool_name), []).append(index)
         executions: List[ToolExecution] = []
-        for end_time, tool_name, duration in sorted(self._tool_ends):
+        matched_ends = 0
+        for end_time, tool_name, duration, process_id in sorted(self._tool_ends):
             expected_start = end_time - duration
             candidates = [
                 i
-                for i in unmatched
-                if self._tool_starts[i][1] == tool_name and self._tool_starts[i][0] <= end_time
+                for i in starts_by_key.get((process_id, tool_name), [])
+                if i in unmatched and self._tool_starts[i][0] <= end_time
             ]
             if not candidates:
                 continue
@@ -192,8 +240,9 @@ class LogLoader:
             if abs(self._tool_starts[best][0] - expected_start) > 2.0:
                 # 完成事件缺少 call id；距离过大时宁可标为未测量，也不错误归因。
                 continue
-            start_time, _, tool_call_id = self._tool_starts[best]
+            start_time, _, tool_call_id, _ = self._tool_starts[best]
             unmatched.remove(best)
+            matched_ends += 1
             executions.append(
                 ToolExecution(
                     tool_call_id=tool_call_id,
@@ -201,8 +250,11 @@ class LogLoader:
                     start_time=start_time,
                     end_time=end_time,
                     duration_seconds=duration,
+                    process_id=process_id,
                 )
             )
+        self.diagnostics["unmatched_tool_starts"] = len(unmatched)
+        self.diagnostics["unmatched_tool_ends"] = len(self._tool_ends) - matched_ends
         return sorted(executions, key=lambda execution: execution.start_time)
 
     @staticmethod

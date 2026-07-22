@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 
 from .models import (
     AnalysisResult,
+    CallStatus,
     IterationTiming,
     LLMChain,
     LLMRequest,
@@ -39,6 +40,9 @@ class ChainAnalyzer:
     def analyze(self) -> AnalysisResult:
         result = AnalysisResult()
 
+        # analyze() 可重复调用；关系索引必须从输入重新构建。
+        self._parent_to_task_ids.clear()
+        self._task_id_to_parent.clear()
         self._match_spawn_calls_to_task_ids()
 
         parent_sessions = self._identify_parent_sessions()
@@ -66,55 +70,40 @@ class ChainAnalyzer:
         result.sorted_sessions = sorted(result.sessions.values(), key=lambda c: c.start_time)
 
         result.statistics = self._compute_statistics(result.sessions)
+        result.diagnostics = {
+            "completed_calls": result.statistics.completed_calls,
+            "incomplete_calls": result.statistics.incomplete_calls,
+            "invalid_calls": result.statistics.invalid_calls,
+            "measured_tool_calls": len(self._tool_execution_by_id),
+        }
 
         return result
 
     def _match_spawn_calls_to_task_ids(self) -> None:
-        for session_id in self._all_sessions:
-            # 获取该 session 的起始时间
+        for session_id in sorted(self._all_sessions):
+            direct_parent = self._direct_parent_session(session_id)
+            if not direct_parent:
+                continue
+
             child_reqs = self.requests.get(session_id, [])
             child_start = child_reqs[0].timestamp if child_reqs else 0
+            root_parent = self._find_root_parent(direct_parent)
+            children = self._parent_to_task_ids.setdefault(root_parent, [])
+            if not any(child_id == session_id for child_id, _ in children):
+                children.append((session_id, child_start))
+            self._task_id_to_parent[session_id] = direct_parent
 
-            # spawn_subagent 新格式：<parent>_subagent_<task_id>
-            if "_subagent_" in session_id:
-                parts = session_id.split("_subagent_")
-                if len(parts) >= 2:
-                    parent_session = parts[0]
-                    if parent_session not in self._parent_to_task_ids:
-                        self._parent_to_task_ids[parent_session] = []
-                    self._parent_to_task_ids[parent_session].append((session_id, child_start))
-                    self._task_id_to_parent[session_id] = parent_session
-
-            # fork_agent 新格式：<parent>_fork_agent_<task_id>
-            if "_fork_agent_" in session_id:
-                parts = session_id.split("_fork_agent_")
-                if len(parts) >= 2:
-                    parent_session = parts[0]
-                    full_parent = self._find_full_session_id(parent_session)
-                    if full_parent:
-                        root_parent = self._find_root_parent(full_parent)
-                        if root_parent not in self._parent_to_task_ids:
-                            self._parent_to_task_ids[root_parent] = []
-                        self._parent_to_task_ids[root_parent].append((session_id, child_start))
-                        self._task_id_to_parent[session_id] = full_parent
-                    else:
-                        # parent 不在已知 session 中，直接添加
-                        if parent_session not in self._parent_to_task_ids:
-                            self._parent_to_task_ids[parent_session] = []
-                        self._parent_to_task_ids[parent_session].append((session_id, 0))
-                        self._task_id_to_parent[session_id] = parent_session
-
-    def _find_full_session_id(self, partial_id: str) -> Optional[str]:
-        """从部分 session_id 找到完整匹配的 session_id"""
-        all_sessions = set(self.requests.keys()) | set(self.responses.keys())
-        for session_id in all_sessions:
-            # 排除 fork session_id（因为它们包含 parent 但不是我们要找的）
-            if "_fork_agent_" in session_id:
-                continue
-            # 检查是否以 partial_id 结尾（例如 sess_xxx_subagent_af7666eb 结尾是 subagent_af7666eb）
-            if session_id.endswith(partial_id):
-                return session_id
-        return None
+    @staticmethod
+    def _direct_parent_session(session_id: str) -> Optional[str]:
+        """从最后一个 agent 分隔符取得直接父 session。"""
+        positions = [
+            session_id.rfind(marker)
+            for marker in ("_subagent_", "_fork_agent_")
+            if marker in session_id
+        ]
+        if not positions:
+            return None
+        return session_id[: max(positions)]
 
     def _find_root_parent(self, session_id: str, _visited: Optional[set] = None) -> str:
         """递归向上找到真正的顶层父 session"""
@@ -124,22 +113,26 @@ class ChainAnalyzer:
             return session_id  # 防止循环
         _visited.add(session_id)
 
-        if "_subagent_" in session_id or "_fork_agent_" in session_id:
-            if "_subagent_" in session_id:
-                parts = session_id.split("_subagent_")
-            else:
-                parts = session_id.split("_fork_agent_")
-            parent = parts[0] if len(parts) >= 2 else session_id
-            if "_subagent_" in parent or "_fork_agent_" in parent:
-                return self._find_root_parent(parent, _visited)
-            return parent
+        parent = self._direct_parent_session(session_id)
+        if parent:
+            return self._find_root_parent(parent, _visited)
         return session_id
 
     def _identify_parent_sessions(self) -> List[str]:
-        return [s for s in self._all_sessions if "_subagent_" not in s and "_fork_agent_" not in s]
+        return [s for s in self._all_sessions if not self._is_subagent_session(s)]
 
     def _identify_subagent_sessions(self) -> List[str]:
-        return [s for s in self._all_sessions if "_subagent_" in s or "_fork_agent_" in s]
+        return [s for s in self._all_sessions if self._is_subagent_session(s)]
+
+    @staticmethod
+    def _is_subagent_session(session_id: str) -> bool:
+        """Recognize current nested IDs and the legacy top-level prefixes."""
+        return (
+            "_subagent_" in session_id
+            or "_fork_agent_" in session_id
+            or session_id.startswith("subagent_")
+            or session_id.startswith("fork_fork_agent_")
+        )
 
     def _resolve_subagent_session(self, task_id: str) -> str:
         """从 task_id 推导 subagent 的 session_id"""
@@ -218,13 +211,18 @@ class ChainAnalyzer:
         all_requests.sort(key=lambda r: r.timestamp)
         all_responses.sort(key=lambda r: r.timestamp)
 
-        start_time = all_requests[0].timestamp if all_requests else 0
-        end_time = all_responses[-1].timestamp if all_responses else 0
-
         # 计算时间统计
         iteration_timings = self._compute_iteration_timings(all_requests, all_responses)
         total_llm_duration = sum(t.llm_call_duration for t in iteration_timings)
         total_tool_duration = sum(t.tool_processing_duration for t in iteration_timings)
+        observed_times = [r.timestamp for r in all_requests] + [r.timestamp for r in all_responses]
+        observed_times.extend(
+            execution.end_time
+            for timing in iteration_timings
+            for execution in timing.tool_executions
+        )
+        start_time = min(observed_times) if observed_times else 0
+        end_time = max(observed_times) if observed_times else 0
 
         return LLMChain(
             session_id=session_id,
@@ -233,7 +231,7 @@ class ChainAnalyzer:
             responses=all_responses,
             start_time=start_time,
             end_time=end_time,
-            total_iterations=len(all_requests),
+            total_iterations=len(iteration_timings),
             subagents=subagent_infos,
             is_subagent=False,
             iteration_timings=iteration_timings,
@@ -252,7 +250,7 @@ class ChainAnalyzer:
         # 新日志按 event_id 配对；旧日志回退 (session_id, iteration)。
         sorted_items = pair_requests_responses(requests, responses)
 
-        for i, item in enumerate(sorted_items):
+        for i, item in enumerate(sorted_items, start=1):
             req = item["request"]
             resp = item["response"]
 
@@ -260,7 +258,7 @@ class ChainAnalyzer:
                 continue
 
             timing = IterationTiming(
-                iteration_num=i + 1,
+                iteration_num=i,
                 session_id=req.session_id if req else (resp.session_id if resp else ""),
                 request_timestamp=req.timestamp if req else 0,
                 response_timestamp=resp.timestamp if resp else 0,
@@ -274,9 +272,15 @@ class ChainAnalyzer:
             if iteration_key in self.system_metrics:
                 timing.system_metrics = self.system_metrics[iteration_key]
 
-            # 计算 llm_call_duration
-            if req and resp:
-                timing.llm_call_duration = max(resp.timestamp - req.timestamp, 0.0)
+            if req and resp and resp.timestamp >= req.timestamp:
+                timing.status = CallStatus.COMPLETE
+                timing.llm_call_duration = resp.timestamp - req.timestamp
+            elif req and resp:
+                timing.status = CallStatus.INVALID
+            elif req:
+                timing.status = CallStatus.REQUEST_ONLY
+            else:
+                timing.status = CallStatus.RESPONSE_ONLY
 
             # 工具耗时只使用 TelemetryRail 的真实生命周期，不再把模型调用间隙推断为工具。
             if resp:
@@ -289,49 +293,21 @@ class ChainAnalyzer:
                         if execution.tool_name not in delegated_names:
                             timing.tool_processing_duration += execution.duration_seconds
 
-            timing.is_last_iteration = not any(
-                later["request"] and later["request"].session_id == timing.session_id
-                for later in sorted_items[i + 1 :]
-            )
-
             timings.append(timing)
+
+        # 线性标记每个 session 的最后一次调用，避免 O(n²) 向后扫描。
+        seen_sessions = set()
+        for timing in reversed(timings):
+            timing.is_last_iteration = timing.session_id not in seen_sessions
+            seen_sessions.add(timing.session_id)
 
         return timings
 
     @staticmethod
     def _extract_tool_name(tc: Dict) -> str:
         """从 tool call 中提取名称（兼容多种格式）"""
-        return tc.get("name", "") or tc.get("function", {}).get("name", "")
-
-    def _has_spawn_subagent(self, resp: LLMResponse) -> bool:
-        """检查 response 是否包含 spawn_subagent/fork_agent 工具调用"""
-        if not resp.tool_calls:
-            return False
-        spawn_names = {"spawn_subagent", "fork_agent", "spawn_fork_agent"}
-        for tc in resp.tool_calls:
-            name = self._extract_tool_name(tc)
-            if name in spawn_names:
-                return True
-        return False
-
-    def _get_spawn_overhead(self, response_timestamp: float, parent_session_id: str) -> float:
-        """计算 spawn subagent 的框架处理时间（response 到第一个 subagent 启动）"""
-        children = self._parent_to_task_ids.get(parent_session_id, [])
-        if not children:
-            return 0.0
-
-        # 找到 response 之后启动的 subagent 中最早的时间
-        min_start = float("inf")
-        for child_session_id, _ in children:
-            child_reqs = self.requests.get(child_session_id, [])
-            if child_reqs:
-                child_start = child_reqs[0].timestamp
-                if child_start > response_timestamp - 1 and child_start < min_start:
-                    min_start = child_start
-
-        if min_start == float("inf"):
-            return 0.0
-        return max(min_start - response_timestamp, 0.0)
+        name = tc.get("name", "") or tc.get("function", {}).get("name", "")
+        return str(name) if name else ""
 
     def _compute_subagent_depth(self, task_id: str) -> Tuple[int, List[str], str]:
         """计算 subAgent 的嵌套深度和调用路径"""
@@ -408,15 +384,25 @@ class ChainAnalyzer:
 
         model_name = reqs[0].model_name if reqs else (resps[0].model_name if resps else "")
 
+        iteration_timings = self._compute_iteration_timings(reqs, resps)
+        observed_times = [r.timestamp for r in reqs] + [r.timestamp for r in resps]
+        observed_times.extend(
+            execution.end_time
+            for timing in iteration_timings
+            for execution in timing.tool_executions
+        )
         return LLMChain(
             session_id=session_id,
             model_name=model_name,
             requests=reqs,
             responses=resps,
-            start_time=reqs[0].timestamp if reqs else 0,
-            end_time=resps[-1].timestamp if resps else 0,
-            total_iterations=len(reqs),
+            start_time=min(observed_times) if observed_times else 0,
+            end_time=max(observed_times) if observed_times else 0,
+            total_iterations=len(iteration_timings),
             is_subagent=True,
+            iteration_timings=iteration_timings,
+            total_llm_duration_seconds=sum(t.llm_call_duration for t in iteration_timings),
+            total_tool_duration_seconds=sum(t.tool_processing_duration for t in iteration_timings),
         )
 
     def _find_related_subagents(self, parent_session: str) -> List[Tuple[str, float]]:
@@ -513,7 +499,7 @@ class ChainAnalyzer:
         total_llm_time = 0.0
         total_tool_time = 0.0
         total_duration = 0.0
-        total_iterations_count = 0
+        completed_calls_count = 0
 
         # Token 统计
         total_input_tokens = 0
@@ -546,7 +532,18 @@ class ChainAnalyzer:
                 # 时间统计
                 total_llm_time += chain.total_llm_duration_seconds
                 total_tool_time += chain.total_tool_duration_seconds
-                total_iterations_count += len(chain.iteration_timings)
+                chain_completed = sum(
+                    timing.status == CallStatus.COMPLETE for timing in chain.iteration_timings
+                )
+                chain_invalid = sum(
+                    timing.status == CallStatus.INVALID for timing in chain.iteration_timings
+                )
+                completed_calls_count += chain_completed
+                stats.completed_calls += chain_completed
+                stats.invalid_calls += chain_invalid
+                stats.incomplete_calls += (
+                    len(chain.iteration_timings) - chain_completed - chain_invalid
+                )
 
                 # Session 总耗时
                 if chain.start_time and chain.end_time:
@@ -589,9 +586,9 @@ class ChainAnalyzer:
         stats.failed_tool_calls = sum(stats.tool_failure_counts.values())
 
         # 计算平均值
-        if total_iterations_count > 0:
-            stats.avg_llm_time_seconds = total_llm_time / total_iterations_count
-            stats.avg_tool_time_seconds = total_tool_time / total_iterations_count
+        if completed_calls_count > 0:
+            stats.avg_llm_time_seconds = total_llm_time / completed_calls_count
+            stats.avg_tool_time_seconds = total_tool_time / completed_calls_count
 
         # Per-session 统计
         for chain in parent_chains:
@@ -602,6 +599,9 @@ class ChainAnalyzer:
             s_reasoning_chars = sum(len(r.reasoning_content or "") for r in chain.responses)
             s_content_chars = sum(len(r.content or "") for r in chain.responses)
             iters = chain.total_iterations
+            completed = sum(
+                timing.status == CallStatus.COMPLETE for timing in chain.iteration_timings
+            )
             total_time = (
                 (chain.end_time - chain.start_time) if chain.end_time and chain.start_time else 0
             )
@@ -615,8 +615,14 @@ class ChainAnalyzer:
                     "total_time": total_time,
                     "llm_time": chain.total_llm_duration_seconds,
                     "tool_time": chain.total_tool_duration_seconds,
-                    "avg_llm_time": chain.total_llm_duration_seconds / iters if iters > 0 else 0,
-                    "avg_tool_time": chain.total_tool_duration_seconds / iters if iters > 0 else 0,
+                    "completed_calls": completed,
+                    "incomplete_calls": iters - completed,
+                    "avg_llm_time": (
+                        chain.total_llm_duration_seconds / completed if completed > 0 else 0
+                    ),
+                    "avg_tool_time": (
+                        chain.total_tool_duration_seconds / completed if completed > 0 else 0
+                    ),
                     "tokens": s_tokens,
                     "output_tokens": s_output_tokens,
                     "cache_tokens": s_cache_tokens,

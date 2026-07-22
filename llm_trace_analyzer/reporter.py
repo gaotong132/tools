@@ -1,5 +1,6 @@
 """HTML报告生成器"""
 
+import hashlib
 import html
 import json
 import re
@@ -9,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .models import (
     AnalysisResult,
+    CallStatus,
     IterationTiming,
     LLMChain,
     LLMRequest,
@@ -52,6 +54,7 @@ class HTMLReporter:
         self._timing_map: Dict[int, Dict] = {}
         self._global_num_map: Dict[Tuple[str, Any], int] = {}
         self._children_by_session: Dict[str, List] = {}
+        self._detail_file_by_session: Dict[str, str] = {}
 
     def generate(self, result: AnalysisResult, output_path: str) -> None:
         output_dir = Path(output_path).parent
@@ -59,6 +62,17 @@ class HTMLReporter:
 
         report_dir = output_dir / output_name
         report_dir.mkdir(parents=True, exist_ok=True)
+
+        self._detail_file_by_session = {}
+        used_names = set()
+        for chain in result.sorted_sessions:
+            short_id = self._short_session_id(chain.session_id)
+            file_name = f"session_{short_id}.html"
+            if file_name in used_names:
+                suffix = hashlib.sha1(chain.session_id.encode("utf-8")).hexdigest()[:8]
+                file_name = f"session_{short_id}_{suffix}.html"
+            used_names.add(file_name)
+            self._detail_file_by_session[chain.session_id] = file_name
 
         self._generate_index(result, report_dir)
 
@@ -68,8 +82,7 @@ class HTMLReporter:
         print(f"Report generated in: {report_dir}/")
         print("  - index.html (session list)")
         for chain in result.sorted_sessions:
-            short_id = self._short_session_id(chain.session_id)
-            print(f"  - session_{short_id}.html")
+            print(f"  - {self._detail_file_by_session[chain.session_id]}")
 
     def _extract_first_user_message(self, chain: LLMChain) -> str:
         """提取 session 第一条用户消息内容"""
@@ -96,10 +109,10 @@ class HTMLReporter:
                                 obj = json.loads(json_match.group())
                                 extracted = obj.get("content", "")
                                 if extracted:
-                                    content = extracted
+                                    content = str(extracted)
                         except (json.JSONDecodeError, ValueError):
                             pass
-                    return content[:200].replace("\n", " ").strip()
+                    return str(content)[:200].replace("\n", " ").strip()
         return ""
 
     def _generate_index(self, result: AnalysisResult, report_dir: Path) -> None:
@@ -108,13 +121,13 @@ class HTMLReporter:
         session_rows: List[str] = []
         for chain in result.sorted_sessions:
             short_id = self._short_session_id(chain.session_id)
-            detail_file = f"session_{short_id}.html"
+            detail_file = self._detail_file_by_session[chain.session_id]
             first_msg = self._extract_first_user_message(chain)
 
             row = SESSION_ROW_TEMPLATE.format(
-                session_id_short=short_id,
-                session_id=chain.session_id,
-                model_name=chain.model_name,
+                session_id_short=html.escape(short_id),
+                session_id=html.escape(chain.session_id),
+                model_name=html.escape(chain.model_name),
                 total_iterations=chain.total_iterations,
                 start_time=self._format_timestamp(chain.start_time),
                 end_time=self._format_timestamp(chain.end_time),
@@ -130,7 +143,9 @@ class HTMLReporter:
         for s in stats.session_stats:
             s["prompt"] = prompt_map.get(s["session_id"], "")
 
-        session_stats_json = json.dumps(stats.session_stats, ensure_ascii=False)
+        session_stats_json = json.dumps(stats.session_stats, ensure_ascii=False).replace(
+            "</", "<\\/"
+        )
 
         index_html = INDEX_TEMPLATE.format(
             total_sessions=stats.total_sessions,
@@ -142,7 +157,8 @@ class HTMLReporter:
             total_output_tokens=stats.total_output_tokens,
             total_tokens=stats.total_tokens,
             total_cache_tokens=stats.total_cache_tokens,
-            session_rows="\n".join(session_rows),
+            session_rows="\n".join(session_rows)
+            or '<tr><td colspan="7" style="text-align:center">No sessions found</td></tr>',
             statistics_html=self._generate_global_statistics_html(result),
             session_stats_json=session_stats_json,
         )
@@ -152,7 +168,7 @@ class HTMLReporter:
 
     def _generate_session_detail(self, chain: LLMChain, report_dir: Path) -> None:
         short_id = self._short_session_id(chain.session_id)
-        detail_file = report_dir / f"session_{short_id}.html"
+        detail_file = report_dir / self._detail_file_by_session[chain.session_id]
 
         # Build shared state
         self._global_tool_name_map = {}
@@ -164,11 +180,12 @@ class HTMLReporter:
                     if tc_id and tc_name:
                         self._global_tool_name_map[tc_id] = tc_name
 
-        self._timing_map: Dict[int, Dict] = {}
+        self._timing_map = {}
         for timing in chain.iteration_timings:
             self._timing_map[timing.iteration_num] = {
                 "llm_duration": timing.llm_call_duration,
                 "tool_duration": timing.tool_processing_duration,
+                "status": timing.status.value,
             }
 
         # Build global numbering
@@ -176,7 +193,7 @@ class HTMLReporter:
         self._global_num_map = build_global_num_map(sorted_items)
 
         # Build parent-child map for subagents
-        self._children_by_session: Dict[str, List] = {}
+        self._children_by_session = {}
         for sa in chain.subagents:
             parent_sid = self._get_parent_session_id(sa.session_id, chain)
             if parent_sid not in self._children_by_session:
@@ -194,11 +211,15 @@ class HTMLReporter:
         session_statistics_html = self._generate_session_statistics_html(chain)
 
         num_iters = len(chain.iteration_timings)
-        avg_llm = chain.total_llm_duration_seconds / num_iters if num_iters > 0 else 0
+        completed_calls = sum(
+            timing.status == CallStatus.COMPLETE for timing in chain.iteration_timings
+        )
+        incomplete_calls = num_iters - completed_calls
+        avg_llm = chain.total_llm_duration_seconds / completed_calls if completed_calls > 0 else 0
 
         # 统计总迭代次数、模型调用次数、工具调用次数
         total_iterations = len(chain.iteration_timings)
-        total_model_calls = total_iterations  # 每次迭代调用一次模型
+        total_model_calls = completed_calls
         total_tool_calls = sum(len(resp.tool_calls) for resp in chain.responses if resp.tool_calls)
 
         # Session 级别 token 统计
@@ -208,9 +229,9 @@ class HTMLReporter:
         session_cache_tokens = sum(resp.cache_tokens for resp in chain.responses)
 
         html_content = SESSION_DETAIL_TEMPLATE.format(
-            session_id_short=short_id,
-            session_id=chain.session_id,
-            model_name=chain.model_name,
+            session_id_short=html.escape(short_id),
+            session_id=html.escape(chain.session_id),
+            model_name=html.escape(chain.model_name),
             total_iterations=chain.total_iterations,
             start_time=self._format_timestamp(chain.start_time),
             end_time=self._format_timestamp(chain.end_time),
@@ -220,6 +241,7 @@ class HTMLReporter:
             avg_llm_per_iter=self._format_duration(avg_llm),
             total_iterations_count=total_iterations,
             total_model_calls=total_model_calls,
+            incomplete_calls=incomplete_calls,
             total_tool_calls=total_tool_calls,
             session_input_tokens=session_input_tokens,
             session_output_tokens=session_output_tokens,
@@ -373,7 +395,7 @@ class HTMLReporter:
 
         # 构建交替序列：main_seg, sub_group, main_seg, sub_group, ...
         # 用 (sort_key, type, id, timings) 表示每个条目
-        timeline_entries: List[Tuple[int, str, str, List]] = []
+        timeline_entries: List[Tuple[int, int, str, List[IterationTiming]]] = []
         prev_seg_end = 0
         for seg_id, seg_timings in main_segments:
             last_global = seg_timings[-1].iteration_num
@@ -498,7 +520,7 @@ class HTMLReporter:
 
                 # 处理 timestamp=0 的情况
                 if iter_start <= 0:
-                    i_left = 0
+                    i_left = 0.0
                     i_width = 0.3
                 else:
                     i_left = max(((iter_start - session_start) / total_span) * 100, 0)
@@ -519,6 +541,8 @@ class HTMLReporter:
 
                 # 构建标签：#N + tool calls + content 摘要
                 label_text = f"#{local_num}"
+                if timing.status != CallStatus.COMPLETE:
+                    label_text += f"  [{timing.status.value}]"
                 kind_labels = {
                     "session_memory": "Memory",
                     "context_summary": "Summary",
@@ -655,7 +679,12 @@ class HTMLReporter:
         )
 
     def _tooltip_data(
-        self, timings, label: str, start_ts: float = 0, end_ts: float = 0, responses: List = None
+        self,
+        timings,
+        label: str,
+        start_ts: float = 0,
+        end_ts: float = 0,
+        responses: Optional[List] = None,
     ) -> Dict:
         llm = sum(t.llm_call_duration for t in timings)
         tool = sum(t.tool_processing_duration for t in timings)
@@ -663,7 +692,9 @@ class HTMLReporter:
         llm_pct = (llm / total * 100) if total > 0 else 0
         tool_pct = (tool / total * 100) if total > 0 else 0
         if not start_ts and timings:
-            start_ts = min(t.request_timestamp for t in timings if t.request_timestamp > 0)
+            start_ts = min(
+                (t.request_timestamp for t in timings if t.request_timestamp > 0), default=0
+            )
         if not end_ts and timings:
             delegated = {"spawn_subagent", "fork_agent", "spawn_fork_agent"}
             end_ts = max(
@@ -911,6 +942,7 @@ class HTMLReporter:
             timing_info = self._timing_map.get(global_num, {})
             llm_duration_str = self._format_duration(timing_info.get("llm_duration", 0))
             tool_duration_str = self._format_duration(timing_info.get("tool_duration", 0))
+            call_status = timing_info.get("status", CallStatus.INVALID.value)
 
             request_html = ""
             body_id = ""
@@ -947,6 +979,11 @@ class HTMLReporter:
                 global_num=global_num,
                 depth=0,
                 depth_indicator="",
+                status_label=(
+                    ""
+                    if call_status == CallStatus.COMPLETE.value
+                    else f'<span class="label internal">{html.escape(call_status)}</span>'
+                ),
                 llm_duration=llm_duration_str,
                 tool_duration=tool_duration_str,
                 iter_input_tokens=iter_input_tokens,
@@ -1050,13 +1087,14 @@ class HTMLReporter:
     @staticmethod
     def _extract_tool_name(tc: Dict) -> str:
         """从 tool call 中提取名称（兼容多种格式）"""
-        return tc.get("name", "") or tc.get("function", {}).get("name", "")
+        name = tc.get("name", "") or tc.get("function", {}).get("name", "")
+        return str(name) if name else ""
 
     def _generate_request_html(
         self,
         request: LLMRequest,
         prev_request: Optional[LLMRequest] = None,
-        global_tool_name_map: Dict[str, str] = None,
+        global_tool_name_map: Optional[Dict[str, str]] = None,
         is_subagent_first_request: bool = False,
     ) -> str:
         system_prompt_html = ""
@@ -1067,6 +1105,7 @@ class HTMLReporter:
             if msg.get("role") == "system" and not system_prompt_html:
                 content = msg.get("content", "")
                 if content:
+                    content = str(content)
                     system_prompt_chars = len(content)
                     content_id = self._next_id()
                     escaped_content = html.escape(content)
@@ -1118,7 +1157,7 @@ class HTMLReporter:
             timestamp=timestamp_str,
             request_chars=request_chars,
             source_class="subagent" if request.source == "subagent" else "",
-            source_label=request.source_label,
+            source_label=html.escape(request.source_label),
             internal_label=internal_label,
             system_prompt_html=system_prompt_html,
             message_count=len(other_messages),
@@ -1134,7 +1173,7 @@ class HTMLReporter:
         for tool in tools:
             name = tool.get("name", "")
             if name:
-                items.append(TOOL_NAME_ITEM_TEMPLATE.format(name=name))
+                items.append(TOOL_NAME_ITEM_TEMPLATE.format(name=html.escape(str(name))))
         return "\n".join(items)
 
     def _generate_new_message_html(
@@ -1257,7 +1296,7 @@ class HTMLReporter:
             timestamp=timestamp_str,
             response_chars=response_chars,
             source_class="subagent" if response.source == "subagent" else "",
-            source_label=response.source_label,
+            source_label=html.escape(response.source_label),
             reasoning_html=reasoning_html,
             content_html=content_html,
             tool_calls_html=tool_calls_html,
@@ -1278,7 +1317,7 @@ class HTMLReporter:
                 tool_count=tool_count,
                 char_count=char_count,
                 tool_calls_json=escaped_content,
-                tool_names=tool_names,
+                tool_names=html.escape(tool_names),
             )
         return JSON_BLOCK_TEMPLATE.format(content_id=content_id, content=escaped_content)
 
@@ -1710,13 +1749,15 @@ class HTMLReporter:
                 for tc in resp.tool_calls:
                     name = self._extract_tool_name(tc) or "unknown"
                     if name not in per_tool:
-                        per_tool[name] = {"count": 0, "total_time": 0.0}
+                        per_tool[name] = {"count": 0, "measured": 0, "total_time": 0.0}
                     per_tool[name]["count"] += 1
                     measured_execution = execution_by_id.get(tc.get("id", ""))
                     if measured_execution:
+                        per_tool[name]["measured"] += 1
                         per_tool[name]["total_time"] += measured_execution.duration_seconds
         for v in per_tool.values():
-            v["avg_time"] = v["total_time"] / v["count"] if v["count"] > 0 else 0
+            v["unmeasured"] = v["count"] - v["measured"]
+            v["avg_time"] = v["total_time"] / v["measured"] if v["measured"] > 0 else 0
         # 合并失败计数
         if failure_counts:
             for name in per_tool:
@@ -1764,6 +1805,7 @@ class HTMLReporter:
             '<th onclick="sortToolTable(this, \'name\')" class="sortable">Tool</th>'
             '<th onclick="sortToolTable(this, \'ratio\')" class="sortable">Ratio</th>'
             '<th onclick="sortToolTable(this, \'calls\')" class="sortable">Calls</th>'
+            "<th>Measured</th>"
             '<th onclick="sortToolTable(this, \'total\')" class="sortable">Total Time</th>'
             '<th onclick="sortToolTable(this, \'avg\')" class="sortable">Avg Time</th>'
         ]
@@ -1776,6 +1818,12 @@ class HTMLReporter:
             pct = s["count"] / total_calls * 100 if total_calls > 0 else 0
             bar_w = s["count"] / max_count * 100 if max_count > 0 else 0
             failed = s.get("failed", 0)
+            unmeasured_note = (
+                f' <span title="No TelemetryRail completion">'
+                f'({s["unmeasured"]} unmeasured)</span>'
+                if s["unmeasured"]
+                else ""
+            )
             parts.append(
                 f'<tr data-name="{html.escape(name)}" data-count="{s["count"]}" '
                 f'data-total-ms="{int(s["total_time"] * 1000)}" data-avg-ms="{int(s["avg_time"] * 1000)}" '
@@ -1784,6 +1832,7 @@ class HTMLReporter:
                 f'<td style="min-width:120px">{pct:.1f}%'
                 f'<div class="tool-bar"><div class="tool-bar-fill" style="width:{bar_w:.0f}%"></div></div></td>'
                 f'<td>{s["count"]}</td>'
+                f'<td>{s["measured"]}/{s["count"]}{unmeasured_note}</td>'
                 f'<td>{self._format_duration(s["total_time"])}</td>'
                 f'<td>{self._format_duration(s["avg_time"])}</td>'
             )
@@ -1795,9 +1844,9 @@ class HTMLReporter:
             parts.append("</tr>")
         parts.append("</table>")
         parts.append(
-            '<div style="margin-top:8px;font-size:12px;color:#d32f2f">'
-            "⚠ 时间为估算值：将每轮 LLM 响应到下次请求的间隔均分给该轮所有工具调用，"
-            "末轮迭代无后续请求记为 0，不含单个工具的实际执行时长。</div>"
+            '<div style="margin-top:8px;font-size:12px;color:#666">'
+            "时间来自 TelemetryRail 实测；未产生完成事件的调用单独标记为 unmeasured，"
+            "不参与平均耗时。</div>"
         )
         return "\n".join(parts)
 
@@ -1838,15 +1887,23 @@ class HTMLReporter:
         stats = result.statistics
         parts: List[str] = []
 
+        if result.diagnostics:
+            diagnostic_rows = "".join(
+                f"<tr><td>{html.escape(name.replace('_', ' ').title())}</td><td>{value:,}</td></tr>"
+                for name, value in sorted(result.diagnostics.items())
+            )
+            parts.append(
+                '<div class="stat-section"><h3>Data Quality Diagnostics</h3>'
+                f"<table>{diagnostic_rows}</table></div>"
+            )
+
         # 概览卡片
         avg_llm_overview = (
-            stats.total_llm_time_seconds / stats.total_iterations
-            if stats.total_iterations > 0
-            else 0
+            stats.total_llm_time_seconds / stats.completed_calls if stats.completed_calls > 0 else 0
         )
         avg_tool_overview = (
-            stats.total_tool_time_seconds / stats.total_iterations
-            if stats.total_iterations > 0
+            stats.total_tool_time_seconds / stats.completed_calls
+            if stats.completed_calls > 0
             else 0
         )
         tps_overview = (
@@ -2322,10 +2379,14 @@ class HTMLReporter:
             return f"{seconds * 1000:.0f}ms"
         elif seconds < 60:
             return f"{seconds:.1f}s"
-        else:
+        elif seconds < 3600:
             minutes = int(seconds / 60)
             secs = seconds % 60
             return f"{minutes}m {secs:.0f}s"
+        else:
+            hours = int(seconds / 3600)
+            minutes = int(seconds % 3600 / 60)
+            return f"{hours}h {minutes}m"
 
     def _convert_tools_to_openai_format(self, body: dict) -> dict:
         """将 tools 从旧格式转换为标准 OpenAI 格式
@@ -2340,7 +2401,7 @@ class HTMLReporter:
         for tool in body["tools"]:
             if tool.get("type") == "function" and "name" in tool and "function" not in tool:
                 # 旧格式，需要转换
-                converted_tool = {
+                converted_tool: Dict[str, Any] = {
                     "type": "function",
                     "function": {
                         "name": tool.get("name"),

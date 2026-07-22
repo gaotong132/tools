@@ -1,204 +1,121 @@
-"""测试 CLI 主入口模块"""
+"""Application-service and CLI boundary tests."""
 
 import pytest
-import tempfile
-from pathlib import Path
 
 from llm_trace_analyzer.main import LLMTraceAnalyzer, main
-from tests.conftest import (
-    SAMPLE_LOG,
-    EXPECTED_SESSION_ID,
-    EXPECTED_TOTAL_ITERATIONS,
-)
+from tests.trace_factory import telemetry_end, telemetry_start, trace_line, write_log
 
 
-class TestLLMTraceAnalyzer:
-    """测试分析器类"""
-
-    def test_run_basic(self):
-        """测试基本运行"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "report"
-
-            analyzer = LLMTraceAnalyzer(str(SAMPLE_LOG))
-            success = analyzer.run(str(output_path), verbose=True)
-
-            assert success
-            assert output_path.exists()
-
-    def test_run_with_session_filter(self):
-        """测试 session 过滤"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "report"
-
-            analyzer = LLMTraceAnalyzer(str(SAMPLE_LOG))
-            success = analyzer.run(
-                str(output_path),
-                verbose=False,
-                session_filter=EXPECTED_SESSION_ID,
-            )
-
-            assert success
-            assert output_path.exists()
-
-    def test_run_file_not_found(self):
-        """测试文件不存在"""
-        analyzer = LLMTraceAnalyzer("/nonexistent/path.log")
-        success = analyzer.run("/tmp/report")
-        assert not success
-
-    def test_verbose_output(self, capsys):
-        """测试详细输出"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "report"
-
-            analyzer = LLMTraceAnalyzer(str(SAMPLE_LOG))
-            analyzer.run(str(output_path), verbose=True)
-
-            captured = capsys.readouterr()
-            assert "Total sessions" in captured.out
-            assert str(EXPECTED_TOTAL_ITERATIONS) in captured.out
+@pytest.fixture
+def multi_session_log(tmp_path):
+    parent = "target"
+    child = "target_subagent_child"
+    lines = [
+        trace_line(
+            0,
+            "invoke_request",
+            {"messages": [{"role": "user", "content": "target prompt"}]},
+            session_id=parent,
+            event_id="target-call",
+        ),
+        trace_line(
+            1,
+            "invoke_output",
+            {"content": "target result", "tool_calls": [{"id": "target-tool", "name": "bash"}]},
+            session_id=parent,
+            event_id="target-call",
+        ),
+        telemetry_start(1, "bash", "target-tool"),
+        telemetry_end(1.2, "bash", 0.2),
+        trace_line(0.2, "invoke_request", {"messages": []}, session_id=child, event_id="child"),
+        trace_line(0.8, "invoke_output", {"content": "child"}, session_id=child, event_id="child"),
+        trace_line(2, "invoke_request", {"messages": []}, session_id="other", event_id="other"),
+        trace_line(3, "invoke_output", {"content": "other"}, session_id="other", event_id="other"),
+    ]
+    return write_log(tmp_path / "full.log", lines)
 
 
-class TestSessionFiltering:
-    """测试 session 过滤功能"""
+def test_run_builds_report_and_prints_exact_summary(multi_session_log, tmp_path, capsys):
+    output = tmp_path / "report"
 
-    def test_filter_traces_for_session(self):
-        """测试 trace 过滤"""
-        analyzer = LLMTraceAnalyzer(str(SAMPLE_LOG))
-        loader = analyzer._get_loader() if hasattr(analyzer, "_get_loader") else None
+    success = LLMTraceAnalyzer(str(multi_session_log)).run(str(output), verbose=True)
 
-        # 直接测试过滤逻辑
-        from llm_trace_analyzer.loader import LogLoader
-
-        loader = LogLoader(str(SAMPLE_LOG))
-        traces = loader.load()
-
-        filtered = analyzer._filter_traces_for_session(traces, EXPECTED_SESSION_ID)
-
-        # 过滤后的 traces 应只包含主 session 和 subagent
-        session_ids = set(t["session_id"] for t in filtered)
-        for sid in session_ids:
-            assert EXPECTED_SESSION_ID in sid or "_subagent_" in sid
-
-    def test_collect_subagent_sessions(self):
-        """测试 subagent 收集"""
-        analyzer = LLMTraceAnalyzer(str(SAMPLE_LOG))
-
-        from llm_trace_analyzer.loader import LogLoader
-
-        loader = LogLoader(str(SAMPLE_LOG))
-        traces = loader.load()
-
-        collected = set()
-        analyzer._collect_subagent_sessions(EXPECTED_SESSION_ID, traces, collected)
-
-        # 应收集到 subagent sessions
-        assert len(collected) > 0
-        for sid in collected:
-            assert "_subagent_" in sid or "_fork_agent_" in sid
-
-    def test_new_format_subagent_collection(self):
-        """测试新格式 subagent 收集"""
-        analyzer = LLMTraceAnalyzer(str(SAMPLE_LOG))
-
-        from llm_trace_analyzer.loader import LogLoader
-
-        loader = LogLoader(str(SAMPLE_LOG))
-        traces = loader.load()
-
-        collected = set()
-        analyzer._collect_subagent_sessions(EXPECTED_SESSION_ID, traces, collected)
-
-        # 新格式：session_id 包含父 session
-        for sid in collected:
-            if "_fork_agent_" in sid:
-                # fork_agent 应包含 parent 和 subagent
-                assert EXPECTED_SESSION_ID in sid or "_subagent_" in sid
+    assert success
+    assert (output / "index.html").exists()
+    assert len(list(output.glob("session_*.html"))) == 2
+    stdout = capsys.readouterr().out
+    assert "Total sessions: 2" in stdout
+    assert "Total iterations: 3" in stdout
 
 
-class TestCLIMain:
-    """测试 CLI main 函数"""
+def test_run_session_filter_includes_descendants_and_relevant_tool_only(
+    multi_session_log, tmp_path
+):
+    output = tmp_path / "filtered"
 
-    def test_main_basic(self):
-        """测试基本 CLI 运行"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "report"
+    success = LLMTraceAnalyzer(str(multi_session_log)).run(str(output), session_filter="target")
 
-            # 模拟命令行参数
-            import sys
-
-            old_args = sys.argv
-            sys.argv = ["lt", str(SAMPLE_LOG), "-o", str(output_path), "-v"]
-
-            try:
-                main()
-            except SystemExit as e:
-                # main() 可能调用 sys.exit(0)
-                pass
-            finally:
-                sys.argv = old_args
-
-            # 检查报告生成
-            assert output_path.exists()
-
-    def test_main_with_session_filter(self):
-        """测试 CLI session 过滤"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "report"
-
-            import sys
-
-            old_args = sys.argv
-            sys.argv = [
-                "lt",
-                str(SAMPLE_LOG),
-                "-o",
-                str(output_path),
-                "--session",
-                EXPECTED_SESSION_ID,
-            ]
-
-            try:
-                main()
-            except SystemExit:
-                pass
-            finally:
-                sys.argv = old_args
-
-            assert output_path.exists()
-
-    def test_main_no_log_file(self):
-        """测试无日志文件时的错误处理"""
-        import sys
-
-        old_args = sys.argv
-        sys.argv = ["lt"]
-
-        try:
-            main()
-        except SystemExit as e:
-            # 应退出且非 0
-            assert e.code != 0
-        finally:
-            sys.argv = old_args
+    assert success
+    index = (output / "index.html").read_text(encoding="utf-8")
+    detail = next(output.glob("session_*.html")).read_text(encoding="utf-8")
+    assert "target prompt" in index
+    assert "other" not in index
+    assert "child" in detail
+    assert "200ms" in detail
 
 
-class TestOutputPath:
-    """测试输出路径处理"""
+@pytest.mark.parametrize("kind", ["missing", "empty"])
+def test_run_returns_false_for_unusable_input(tmp_path, capsys, kind):
+    path = tmp_path / "input.log"
+    if kind == "empty":
+        path.touch()
 
-    def test_default_output_path(self):
-        """测试默认输出路径"""
-        analyzer = LLMTraceAnalyzer(str(SAMPLE_LOG))
+    success = LLMTraceAnalyzer(str(path)).run(str(tmp_path / "report"))
 
-        # 默认应在日志文件所在目录
-        log_path = Path(SAMPLE_LOG)
-        expected_dir = log_path.parent / "llm_trace_report"
+    assert not success
+    expected = "No LLM_IO_TRACE" if kind == "empty" else "日志文件不存在"
+    assert expected in capsys.readouterr().out
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # 在临时目录测试
-            output_path = Path(tmpdir) / "llm_trace_report"
-            analyzer.run(str(output_path))
 
-            assert output_path.exists()
-            assert (output_path / "index.html").exists()
+def test_cli_accepts_explicit_arguments_without_mutating_sys_argv(multi_session_log, tmp_path):
+    output = tmp_path / "cli-report"
+    exit_code = main([str(multi_session_log), "-o", str(output), "--session", "target", "-v"])
+    assert exit_code == 0
+    assert (output / "index.html").exists()
+
+
+def test_cli_uses_default_output_beside_log(multi_session_log):
+    exit_code = main([str(multi_session_log)])
+    assert exit_code == 0
+    assert (multi_session_log.parent / "llm_trace_report" / "index.html").exists()
+
+
+def test_cli_returns_nonzero_when_default_log_cannot_be_found(monkeypatch, capsys):
+    monkeypatch.setattr("llm_trace_analyzer.main.find_latest_log", lambda: None)
+    assert main([]) == 1
+    assert "No log file found" in capsys.readouterr().out
+
+
+def test_cli_open_launches_generated_index(monkeypatch, multi_session_log, tmp_path):
+    opened = []
+    monkeypatch.setattr("llm_trace_analyzer.main.webbrowser.open", opened.append)
+    output = tmp_path / "open-report"
+
+    assert main([str(multi_session_log), "-o", str(output), "--open"]) == 0
+    assert opened == [str(output / "index.html")]
+
+
+def test_filter_helpers_require_exact_parent_prefix():
+    analyzer = LLMTraceAnalyzer("unused.log")
+    traces = [
+        {"session_id": "root"},
+        {"session_id": "root_subagent_a"},
+        {"session_id": "root_subagent_a_fork_agent_b"},
+        {"session_id": "root-other"},
+        {"session_id": "other"},
+    ]
+    assert [item["session_id"] for item in analyzer._filter_traces_for_session(traces, "root")] == [
+        "root",
+        "root_subagent_a",
+        "root_subagent_a_fork_agent_b",
+    ]

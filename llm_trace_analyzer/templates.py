@@ -944,7 +944,7 @@ SESSION_DETAIL_TEMPLATE = """
             <h1>Session: {session_id_short}</h1>
             <div class="meta">Model: {model_name} | Iterations: {total_iterations} | {start_time} - {end_time}</div>
             <div class="meta">Duration: {session_duration} | LLM: {total_llm_duration} | Tool: {total_tool_duration} | Avg LLM: {avg_llm_per_iter}</div>
-            <div class="meta">Iterations: {total_iterations_count} | Model Calls: {total_model_calls} | Tool Calls: {total_tool_calls}</div>
+            <div class="meta">Iterations: {total_iterations_count} | Completed Calls: {total_model_calls} | Incomplete/Invalid: {incomplete_calls} | Tool Calls: {total_tool_calls}</div>
             <div class="meta">Tokens: {session_input_tokens:,} input | {session_output_tokens:,} output | {session_total_tokens:,} total | {session_cache_tokens:,} cache</div>
         </div>
         <div class="page-tab-nav">
@@ -1385,7 +1385,7 @@ SESSION_DETAIL_TEMPLATE = """
 ITERATION_DETAIL_TEMPLATE = """
 <div class="iteration-block" data-iteration="{local_num}" data-global-iteration="{global_num}">
     <div class="iteration-header">
-        #{local_num} {depth_indicator}
+        #{local_num} {depth_indicator} {status_label}
         <span class="time-stats">LLM: {llm_duration} | Tool: {tool_duration} | Tokens: {iter_input_tokens:,} in / {iter_output_tokens:,} out / {iter_total_tokens:,} total</span>
         {copy_body_btn}
         <pre style="display: none;" id="{body_id}">{body_json}</pre>

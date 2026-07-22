@@ -1,7 +1,17 @@
 """数据模型定义模块"""
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Dict, List, Tuple
+
+
+class CallStatus(str, Enum):
+    """请求/响应配对的完整性状态。"""
+
+    COMPLETE = "complete"
+    REQUEST_ONLY = "request_only"
+    RESPONSE_ONLY = "response_only"
+    INVALID = "invalid"
 
 
 @dataclass
@@ -13,6 +23,7 @@ class ToolExecution:
     start_time: float
     end_time: float
     duration_seconds: float
+    process_id: str = ""
 
 
 @dataclass
@@ -42,6 +53,7 @@ class IterationTiming:
     event_id: str = ""
     call_kind: str = "agent"
     tool_executions: List[ToolExecution] = field(default_factory=list)
+    status: CallStatus = CallStatus.COMPLETE
     # 系统资源指标
     system_metrics: List[SystemMetrics] = field(default_factory=list)
 
@@ -119,6 +131,9 @@ class Statistics:
     total_requests: int = 0
     total_responses: int = 0
     total_iterations: int = 0
+    completed_calls: int = 0
+    incomplete_calls: int = 0
+    invalid_calls: int = 0
     sessions_by_model: Dict[str, int] = field(default_factory=dict)
     # 时间统计
     total_duration_seconds: float = 0.0  # 所有 session 总耗时
@@ -149,6 +164,7 @@ class AnalysisResult:
     sessions: Dict[str, LLMChain] = field(default_factory=dict)
     statistics: Statistics = field(default_factory=Statistics)
     sorted_sessions: List[LLMChain] = field(default_factory=list)
+    diagnostics: Dict[str, int] = field(default_factory=dict)
 
 
 def _pair_key(item: Any) -> Tuple[str, Any]:
