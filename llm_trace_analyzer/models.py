@@ -5,6 +5,17 @@ from typing import Any, Dict, List, Tuple
 
 
 @dataclass
+class ToolExecution:
+    """TelemetryRail 记录的一次真实工具执行。"""
+
+    tool_call_id: str
+    tool_name: str
+    start_time: float
+    end_time: float
+    duration_seconds: float
+
+
+@dataclass
 class SystemMetrics:
     """系统资源指标"""
 
@@ -26,8 +37,11 @@ class IterationTiming:
     request_timestamp: float = 0.0
     response_timestamp: float = 0.0
     llm_call_duration: float = 0.0  # 模型调用时间（秒）
-    tool_processing_duration: float = 0.0  # 工具调用+思考时间（秒）
+    tool_processing_duration: float = 0.0  # TelemetryRail 工具执行时间之和（秒）
     is_last_iteration: bool = False
+    event_id: str = ""
+    call_kind: str = "agent"
+    tool_executions: List[ToolExecution] = field(default_factory=list)
     # 系统资源指标
     system_metrics: List[SystemMetrics] = field(default_factory=list)
 
@@ -44,6 +58,8 @@ class LLMRequest:
     source: str = "parent"
     source_label: str = ""
     is_internal: bool = False  # 是否为框架内部请求（如 command_intent）
+    event_id: str = ""
+    call_kind: str = "agent"
 
 
 @dataclass
@@ -57,6 +73,8 @@ class LLMResponse:
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
     source: str = "parent"
     source_label: str = ""
+    event_id: str = ""
+    call_kind: str = "agent"
     # Token 统计
     input_tokens: int = 0
     output_tokens: int = 0
@@ -133,25 +151,30 @@ class AnalysisResult:
     sorted_sessions: List[LLMChain] = field(default_factory=list)
 
 
+def _pair_key(item: Any) -> Tuple[str, Any]:
+    """优先使用并发安全的 event_id；兼容没有 event_id 的旧日志。"""
+    return (item.session_id, item.event_id or item.iteration)
+
+
 def pair_requests_responses(
     requests: List[LLMRequest],
     responses: List[LLMResponse],
 ) -> List[Dict[str, Any]]:
-    """按 (session_id, iteration) 配对请求和响应，按 timestamp 排序返回。
+    """按 event_id（旧日志回退 iteration）配对请求和响应。
 
     返回: [{"request": LLMRequest|None, "response": LLMResponse|None, "timestamp": float}, ...]
     """
-    paired: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    paired: Dict[Tuple[str, Any], Dict[str, Any]] = {}
 
     for req in requests:
-        key = (req.session_id, req.iteration)
+        key = _pair_key(req)
         if key not in paired:
             paired[key] = {"request": None, "response": None, "timestamp": 0}
         paired[key]["request"] = req
         paired[key]["timestamp"] = req.timestamp
 
     for resp in responses:
-        key = (resp.session_id, resp.iteration)
+        key = _pair_key(resp)
         if key not in paired:
             paired[key] = {"request": None, "response": None, "timestamp": 0}
         paired[key]["response"] = resp
@@ -161,12 +184,12 @@ def pair_requests_responses(
     return sorted(paired.values(), key=lambda x: x["timestamp"])
 
 
-def build_global_num_map(sorted_items: List[Dict[str, Any]]) -> Dict[Tuple[str, int], int]:
+def build_global_num_map(sorted_items: List[Dict[str, Any]]) -> Dict[Tuple[str, Any], int]:
     """为排序后的配对项分配全局编号 (1-based)。"""
-    result: Dict[Tuple[str, int], int] = {}
+    result: Dict[Tuple[str, Any], int] = {}
     for i, item in enumerate(sorted_items):
         req = item["request"]
         resp = item["response"]
-        key = (req.session_id, req.iteration) if req else (resp.session_id, resp.iteration)
+        key = _pair_key(req or resp)
         result[key] = i + 1
     return result

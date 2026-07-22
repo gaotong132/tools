@@ -748,10 +748,11 @@ SESSION_DETAIL_TEMPLATE = """
 .gantt-label {{ width: 320px; flex-shrink: 0; font-size: 12px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; font-family: 'Consolas', 'Monaco', monospace; }}
 .gantt-tree {{ color: #aaa; }}
 .gantt-track {{ flex: 1; position: relative; height: 20px; background: #f8f9fa; border-radius: 3px; }}
-.gantt-bar {{ position: absolute; top: 1px; height: 18px; border-radius: 3px; cursor: pointer; transition: box-shadow 0.2s; display: flex; overflow: hidden; min-width: 4px; }}
+.gantt-bar {{ position: absolute; top: 1px; height: 18px; border-radius: 3px; cursor: pointer; transition: box-shadow 0.2s; overflow: hidden; min-width: 4px; }}
 .gantt-bar:hover {{ box-shadow: 0 0 0 2px #4a90d9; z-index: 1; }}
-.gantt-seg {{ height: 100%; min-width: 1px; }}
+.gantt-seg {{ position: absolute; top: 0; height: 100%; min-width: 1px; }}
 .gantt-seg-llm {{ background: #4a90d9; }}
+.gantt-seg-internal {{ background: #7e57c2; }}
 .gantt-seg-tool {{ background: #f57c00; }}
 .gantt-seg-wait {{ background: #bdbdbd; }}
 .gantt-bar.depth-parent {{ background: #e3f2fd; }}
@@ -1304,6 +1305,7 @@ SESSION_DETAIL_TEMPLATE = """
                 const llm = bar.dataset.llm;
                 const tool = bar.dataset.tool;
                 const total = bar.dataset.total;
+                const wall = bar.dataset.wall || total;
                 const llmPct = bar.dataset.llmPct;
                 const toolPct = bar.dataset.toolPct;
                 const timeRange = bar.dataset.timeRange;
@@ -1315,7 +1317,8 @@ SESSION_DETAIL_TEMPLATE = """
                     <div class="tt-bar"><div class="tt-bar-llm" style="width:${{llmPct}}%"></div><div class="tt-bar-tool" style="width:${{toolPct}}%"></div></div>
                     <div class="tt-row"><span class="tt-label">LLM Time</span><span class="tt-value">${{llm}}</span></div>
                     <div class="tt-row"><span class="tt-label">Tool Time</span><span class="tt-value">${{tool}}</span></div>
-                    <div class="tt-row"><span class="tt-label">Total Time</span><span class="tt-value">${{total}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Aggregate Time</span><span class="tt-value">${{total}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Wall Time</span><span class="tt-value">${{wall}}</span></div>
                     <div class="tt-row"><span class="tt-label">Time Range</span><span class="tt-value">${{timeRange}}</span></div>
                     ${{charsHtml}}
                     ${{tokensHtml}}
@@ -1328,6 +1331,7 @@ SESSION_DETAIL_TEMPLATE = """
                 const llm = bar.dataset.llm;
                 const tool = bar.dataset.tool;
                 const total = bar.dataset.total;
+                const wall = bar.dataset.wall || total;
                 const llmPct = bar.dataset.llmPct;
                 const toolPct = bar.dataset.toolPct;
                 const timeRange = bar.dataset.timeRange;
@@ -1337,7 +1341,8 @@ SESSION_DETAIL_TEMPLATE = """
                     <div class="tt-bar"><div class="tt-bar-llm" style="width:${{llmPct}}%"></div><div class="tt-bar-tool" style="width:${{toolPct}}%"></div></div>
                     <div class="tt-row"><span class="tt-label">LLM Time</span><span class="tt-value">${{llm}}</span></div>
                     <div class="tt-row"><span class="tt-label">Tool Time</span><span class="tt-value">${{tool}}</span></div>
-                    <div class="tt-row"><span class="tt-label">Total Time</span><span class="tt-value">${{total}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Aggregate Time</span><span class="tt-value">${{total}}</span></div>
+                    <div class="tt-row"><span class="tt-label">Wall Time</span><span class="tt-value">${{wall}}</span></div>
                     <div class="tt-row"><span class="tt-label">Time Range</span><span class="tt-value">${{timeRange}}</span></div>
                     ${{charsHtml}}
                     ${{tokensHtml}}
@@ -1454,6 +1459,7 @@ GANTT_PANEL_TEMPLATE = """
     <div class="collapsible-content expanded">
         <div class="gantt-legend">
             <span class="gantt-legend-item"><span class="gantt-legend-color" style="background:#4a90d9"></span>LLM Call</span>
+            <span class="gantt-legend-item"><span class="gantt-legend-color" style="background:#7e57c2"></span>Context Maintenance</span>
             <span class="gantt-legend-item"><span class="gantt-legend-color" style="background:#f57c00"></span>Tool Execution</span>
         </div>
         <div class="gantt-chart">

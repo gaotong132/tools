@@ -52,129 +52,115 @@ class TraceParser:
     def _parse_session(
         self, session_id: str, traces: List[Dict[str, Any]]
     ) -> Tuple[List[LLMRequest], List[LLMResponse], Dict[Tuple[str, int], List[SystemMetrics]]]:
-        # 按 iteration 和事件类型分组
-        by_iteration: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
-
-        for trace in traces:
-            iteration = trace["iteration"]
-            by_iteration[iteration].append(trace)
-
         requests: List[LLMRequest] = []
         responses: List[LLMResponse] = []
         system_metrics: Dict[Tuple[str, int], List[SystemMetrics]] = {}
 
-        for iteration in sorted(by_iteration.keys()):
-            iter_traces = by_iteration[iteration]
+        request_events = {TraceEventType.STREAM_REQUEST.value, TraceEventType.INVOKE_REQUEST.value}
+        output_events = {TraceEventType.STREAM_OUTPUT.value, TraceEventType.INVOKE_OUTPUT.value}
+        call_traces = [
+            t
+            for t in traces
+            if t["event"] in request_events | output_events | {TraceEventType.REASONING_DELTA.value}
+        ]
 
-            # 分离不同事件类型
-            request_traces = [
-                t
-                for t in iter_traces
-                if t["event"]
-                in (TraceEventType.STREAM_REQUEST.value, TraceEventType.INVOKE_REQUEST.value)
+        # 新日志以 event_id 标识一次真实模型调用。这是并发场景下唯一可靠的配对键。
+        by_event_id: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        legacy_by_iteration: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+        for trace in call_traces:
+            event_id = trace.get("event_id", "")
+            if event_id:
+                by_event_id[event_id].append(trace)
+            else:
+                legacy_by_iteration[trace["iteration"]].append(trace)
+
+        call_groups: List[
+            Tuple[float, str, List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]
+        ] = []
+        for event_id, event_traces in by_event_id.items():
+            req = [t for t in event_traces if t["event"] in request_events]
+            out = [t for t in event_traces if t["event"] in output_events]
+            reasoning = [
+                t for t in event_traces if t["event"] == TraceEventType.REASONING_DELTA.value
             ]
-            output_traces = [
-                t
-                for t in iter_traces
-                if t["event"]
-                in (TraceEventType.STREAM_OUTPUT.value, TraceEventType.INVOKE_OUTPUT.value)
-            ]
-            reasoning_traces = [
-                t for t in iter_traces if t["event"] == TraceEventType.REASONING_DELTA.value
-            ]
-            system_metrics_traces = [
-                t for t in iter_traces if t["event"] == TraceEventType.SYSTEM_METRICS.value
-            ]
+            start = min(t["timestamp"] for t in event_traces)
+            call_groups.append((start, event_id, req, out, reasoning))
 
-            # 按 stream_request/stream_output 时间戳聚类（阈值 1 秒）
-            request_groups = self._group_by_timestamp(request_traces, threshold=1.0)
-            output_groups = self._group_by_timestamp(output_traces, threshold=1.0)
-
-            # reasoning_delta 按 seq 重置分组
-            reasoning_groups = self._group_by_seq_reset(reasoning_traces)
-
-            # 按 request/output 数量确定 iteration 数（应该是一致的）
-            num_iterations = len(request_groups)
-            if num_iterations != len(output_groups):
-                # 如果不一致，使用较大的数量
-                num_iterations = max(len(request_groups), len(output_groups))
-
-            for sub_iteration in range(num_iterations):
-                actual_iteration = iteration * 10 + sub_iteration
-
-                req_traces = (
-                    request_groups[sub_iteration] if sub_iteration < len(request_groups) else []
+        # 兼容旧日志：没有 event_id 时保留原来的时间聚类策略。
+        for _raw_iteration, iter_traces in legacy_by_iteration.items():
+            request_groups = self._group_by_timestamp(
+                [t for t in iter_traces if t["event"] in request_events]
+            )
+            output_groups = self._group_by_timestamp(
+                [t for t in iter_traces if t["event"] in output_events]
+            )
+            reasoning_groups = self._group_by_seq_reset(
+                [t for t in iter_traces if t["event"] == TraceEventType.REASONING_DELTA.value]
+            )
+            for index in range(max(len(request_groups), len(output_groups))):
+                req = request_groups[index] if index < len(request_groups) else []
+                out = output_groups[index] if index < len(output_groups) else []
+                reference = min((t["timestamp"] for t in out or req), default=0.0)
+                reasoning = min(
+                    reasoning_groups,
+                    key=lambda group: abs(
+                        sum(t["timestamp"] for t in group) / len(group) - reference
+                    ),
+                    default=[],
                 )
-                out_traces = (
-                    output_groups[sub_iteration] if sub_iteration < len(output_groups) else []
+                start = min((t["timestamp"] for t in req or out or reasoning), default=0.0)
+                call_groups.append((start, "", req, out, reasoning))
+
+        for actual_iteration, (_, event_id, req_traces, out_traces, reason_traces) in enumerate(
+            sorted(call_groups, key=lambda group: group[0]), start=1
+        ):
+            parsed_request = (
+                self._parse_request(session_id, actual_iteration, req_traces, event_id=event_id)
+                if req_traces
+                else None
+            )
+            if parsed_request:
+                requests.append(parsed_request)
+            if out_traces or reason_traces:
+                resp = self._parse_response(
+                    session_id,
+                    actual_iteration,
+                    out_traces,
+                    reason_traces,
+                    event_id=event_id,
+                    call_kind=parsed_request.call_kind if parsed_request else "agent",
                 )
+                if resp:
+                    responses.append(resp)
 
-                # 计算当前 output group 的中心时间
-                if out_traces:
-                    out_center = sum(t["timestamp"] for t in out_traces) / len(out_traces)
-                elif req_traces:
-                    # 如果没有 output，用 request 的结束时间作为参考
-                    out_center = (
-                        max(t["timestamp"] for t in req_traces) + 30
-                    )  # 预期 output 在 request 后约 30 秒
-                else:
-                    out_center = 0
-
-                # 找最接近的 reasoning group
-                reason_traces = []
-                if reasoning_groups:
-                    # 选择时间距离最近的 reasoning group
-                    best_group = None
-                    best_distance = float("inf")
-                    for rg in reasoning_groups:
-                        rg_center = sum(t["timestamp"] for t in rg) / len(rg)
-                        distance = abs(rg_center - out_center)
-                        if distance < best_distance:
-                            best_distance = distance
-                            best_group = rg
-                    if best_group and best_distance < 120:  # 最大允许 120 秒差距
-                        reason_traces = best_group
-
-                if req_traces:
-                    req = self._parse_request(session_id, actual_iteration, req_traces)
-                    if req:
-                        requests.append(req)
-
-                if out_traces or reason_traces:
-                    resp = self._parse_response(
-                        session_id,
-                        actual_iteration,
-                        out_traces,
-                        reason_traces,
-                    )
-                    if resp:
-                        responses.append(resp)
-
-            # 解析 system_metrics traces
-            if system_metrics_traces:
-                metrics_list = []
-                for trace in system_metrics_traces:
-                    body_str = trace.get("body_str", "")
-                    if body_str:
-                        try:
-                            body = json.loads(body_str)
-                            metrics = SystemMetrics(
-                                phase=body.get("phase", ""),
-                                cpu_percent=body.get("cpu_percent", 0.0),
-                                memory_rss_mb=body.get("memory_rss_mb", 0.0),
-                                memory_vms_mb=body.get("memory_vms_mb", 0.0),
-                                read_bytes=body.get("read_bytes", 0),
-                                write_bytes=body.get("write_bytes", 0),
-                                timestamp=trace.get("timestamp", 0.0),
-                            )
-                            metrics_list.append(metrics)
-                        except json.JSONDecodeError:
-                            pass
-                if metrics_list:
-                    # 使用 iteration * 10 作为 key（与 actual_iteration 对应）
-                    system_metrics[(session_id, iteration * 10)] = metrics_list
+        metrics_list = self._parse_system_metrics(traces)
+        if metrics_list and requests:
+            system_metrics[(session_id, requests[0].iteration)] = metrics_list
 
         return requests, responses, system_metrics
+
+    @staticmethod
+    def _parse_system_metrics(traces: List[Dict[str, Any]]) -> List[SystemMetrics]:
+        metrics_list: List[SystemMetrics] = []
+        for trace in traces:
+            if trace["event"] != TraceEventType.SYSTEM_METRICS.value:
+                continue
+            try:
+                body = json.loads(trace.get("body_str", ""))
+            except json.JSONDecodeError:
+                continue
+            metrics_list.append(
+                SystemMetrics(
+                    phase=body.get("phase", ""),
+                    cpu_percent=body.get("cpu_percent", 0.0),
+                    memory_rss_mb=body.get("memory_rss_mb", 0.0),
+                    memory_vms_mb=body.get("memory_vms_mb", 0.0),
+                    read_bytes=body.get("read_bytes", 0),
+                    write_bytes=body.get("write_bytes", 0),
+                    timestamp=trace.get("timestamp", 0.0),
+                )
+            )
+        return metrics_list
 
     def _group_by_timestamp(
         self, traces: List[Dict[str, Any]], threshold: float = 1.0
@@ -198,7 +184,11 @@ class TraceParser:
         return groups
 
     def _parse_request(
-        self, session_id: str, iteration: int, traces: List[Dict[str, Any]]
+        self,
+        session_id: str,
+        iteration: int,
+        traces: List[Dict[str, Any]],
+        event_id: str = "",
     ) -> Optional[LLMRequest]:
         merged_body = self._merge_body_parts(traces)
         if not merged_body:
@@ -215,21 +205,7 @@ class TraceParser:
         messages = body_dict.get("messages", [])
         tools = body_dict.get("tools", [])
 
-        # 判断是否为框架内部请求（如 command_intent）
-        is_internal = False
-        if not tools and len(messages) == 1:
-            first_msg = messages[0]
-            if first_msg.get("role") == "user":
-                content = first_msg.get("content", "")
-                # 检查是否包含框架内部提示关键词
-                internal_keywords = [
-                    "安全工具调用解析器",
-                    "你是一个安全工具调用解析器",
-                    "file_guard.extract",
-                    "command_intent",
-                ]
-                if any(kw in content for kw in internal_keywords):
-                    is_internal = True
+        call_kind = self._detect_call_kind(messages, tools)
 
         return LLMRequest(
             session_id=session_id,
@@ -239,8 +215,28 @@ class TraceParser:
             body=body_dict,
             messages=messages,
             tools=tools,
-            is_internal=is_internal,
+            is_internal=call_kind != "agent",
+            event_id=event_id,
+            call_kind=call_kind,
         )
+
+    @staticmethod
+    def _detect_call_kind(messages: List[Dict[str, Any]], tools: List[Dict[str, Any]]) -> str:
+        text = "\n".join(str(message.get("content", "")) for message in messages)
+        if "You are a session memory updater" in text:
+            return "session_memory"
+        if "Summarize each numbered block" in text:
+            return "context_summary"
+        if "CRITICAL: Respond with TEXT ONLY" in text and not tools:
+            return "context_compaction"
+        internal_keywords = (
+            "安全工具调用解析器",
+            "file_guard.extract",
+            "command_intent",
+        )
+        if not tools and any(keyword in text for keyword in internal_keywords):
+            return "framework_internal"
+        return "agent"
 
     def _parse_response(
         self,
@@ -248,6 +244,8 @@ class TraceParser:
         iteration: int,
         output_traces: List[Dict[str, Any]],
         reasoning_traces: List[Dict[str, Any]],
+        event_id: str = "",
+        call_kind: str = "agent",
     ) -> Optional[LLMResponse]:
         merged_body = self._merge_body_parts(output_traces)
         body_dict = {}
@@ -263,7 +261,7 @@ class TraceParser:
             return None
 
         timestamp = (
-            output_traces[0]["timestamp"]
+            max(t["timestamp"] for t in output_traces)
             if output_traces
             else (reasoning_traces[0]["timestamp"] if reasoning_traces else 0)
         )
@@ -296,6 +294,8 @@ class TraceParser:
             content=content,
             reasoning_content=reasoning_content,
             tool_calls=tool_calls,
+            event_id=event_id,
+            call_kind=call_kind,
             input_tokens=token_stats.get("input_tokens", 0),
             output_tokens=token_stats.get("output_tokens", 0),
             total_tokens=token_stats.get("total_tokens", 0),

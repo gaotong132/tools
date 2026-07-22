@@ -73,6 +73,10 @@ class TestHTMLReporter:
             assert "<!DOCTYPE html>" in content
             assert EXPECTED_MODEL_NAME in content
             assert "timing-panel" in content
+            # Timeline 的全局编号必须能命中 iteration 详情块。
+            assert 'data-global-iteration="0"' not in content
+            assert 'data-global-iteration="1"' in content
+            assert "jumpToIteration(1)" in content
 
     def test_short_session_id(self):
         """测试 session_id 缩短"""

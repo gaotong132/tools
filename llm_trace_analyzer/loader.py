@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .constants import DEFAULT_LOG_FILE, DEFAULT_LOG_FILE_FALLBACK, DEFAULT_LOGS_DIR, TRACE_MARKER
+from .models import ToolExecution
 
 # 预编译正则表达式（模块级常量）
 _TRACE_BODY_PATTERN = (
     r"event=(\w+)\s+"
-    r"(?:event_id='[^']*'\s+)?"
+    r"(?:event_id='([^']*)'\s+)?"
     r"session_id='([^']*)'\s+"
     r"request_id='([^']*)'\s+"
     r"iteration=(\d+)\s+"
@@ -28,6 +29,13 @@ LOG_LINE_PATTERN = re.compile(
     r"\[LLM_IO_TRACE\]\s+" + _TRACE_BODY_PATTERN
 )
 ROLLOVER_PATTERN = re.compile(r"^full_\d{8}_\d{6}\.log$")
+_LINE_TIMESTAMP_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)")
+_TOOL_START_PATTERN = re.compile(
+    r"\[TelemetryRail\]\s+工具调用开始:\s*tool=([^,]+),\s*tool_call_id=([^,\s]+)"
+)
+_TOOL_END_PATTERN = re.compile(
+    r"\[TelemetryRail\]\s+工具调用完成:\s*tool=([^,]+),\s*duration=([\d.]+)(ms|s)"
+)
 
 
 def find_rollover_files(log_path: Path) -> List[Path]:
@@ -58,8 +66,14 @@ class LogLoader:
     def __init__(self, file_path: str, load_rollover: bool = True):
         self.file_path = Path(file_path)
         self.load_rollover = load_rollover
+        self.tool_executions: List[ToolExecution] = []
+        self._tool_starts: List[Tuple[float, str, str]] = []
+        self._tool_ends: List[Tuple[float, str, float]] = []
 
     def load(self) -> List[Dict[str, Any]]:
+        self.tool_executions = []
+        self._tool_starts = []
+        self._tool_ends = []
         # 查找所有绕接文件
         if self.load_rollover:
             log_files = find_rollover_files(self.file_path)
@@ -81,6 +95,7 @@ class LogLoader:
 
         # 按时间戳排序
         all_traces.sort(key=lambda t: t.get("timestamp", 0))
+        self.tool_executions = self._match_tool_executions()
 
         return all_traces
 
@@ -106,12 +121,13 @@ class LogLoader:
                 continue
 
             message = entry.get("message", "")
+            timestamp = self._parse_json_timestamp(entry)
+            self._parse_telemetry_line(message, timestamp)
             if TRACE_MARKER not in message:
                 continue
 
             match = JSON_LINE_PATTERN.match(message)
             if match:
-                timestamp = self._parse_json_timestamp(entry)
                 trace = self._extract_trace_fields(match, timestamp, group_offset=0)
                 traces.append(trace)
 
@@ -122,20 +138,72 @@ class LogLoader:
 
         for line in f:
             line = line.strip()
+            timestamp = self._parse_log_timestamp(line)
+            self._parse_telemetry_line(line, timestamp)
             if TRACE_MARKER not in line:
                 continue
 
             match = LOG_LINE_PATTERN.match(line)
             if match:
-                timestamp_str = match.group(1)
-                try:
-                    timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S.%f").timestamp()
-                except ValueError:
-                    timestamp = 0.0
                 trace = self._extract_trace_fields(match, timestamp, group_offset=1)
                 traces.append(trace)
 
         return traces
+
+    @staticmethod
+    def _parse_log_timestamp(line: str) -> float:
+        match = _LINE_TIMESTAMP_PATTERN.match(line)
+        if not match:
+            return 0.0
+        try:
+            return datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S.%f").timestamp()
+        except ValueError:
+            return 0.0
+
+    def _parse_telemetry_line(self, line: str, timestamp: float) -> None:
+        """收集 TelemetryRail 生命周期；完成行没有 call id，稍后统一匹配。"""
+        if not timestamp or "[TelemetryRail]" not in line:
+            return
+        start = _TOOL_START_PATTERN.search(line)
+        if start:
+            self._tool_starts.append((timestamp, start.group(1).strip(), start.group(2).strip()))
+            return
+        end = _TOOL_END_PATTERN.search(line)
+        if end:
+            duration = float(end.group(2))
+            if end.group(3) == "ms":
+                duration /= 1000.0
+            self._tool_ends.append((timestamp, end.group(1).strip(), duration))
+
+    def _match_tool_executions(self) -> List[ToolExecution]:
+        """按工具名及 `结束时间-记录耗时` 匹配缺少 call id 的完成事件。"""
+        unmatched = set(range(len(self._tool_starts)))
+        executions: List[ToolExecution] = []
+        for end_time, tool_name, duration in sorted(self._tool_ends):
+            expected_start = end_time - duration
+            candidates = [
+                i
+                for i in unmatched
+                if self._tool_starts[i][1] == tool_name and self._tool_starts[i][0] <= end_time
+            ]
+            if not candidates:
+                continue
+            best = min(candidates, key=lambda i: abs(self._tool_starts[i][0] - expected_start))
+            if abs(self._tool_starts[best][0] - expected_start) > 2.0:
+                # 完成事件缺少 call id；距离过大时宁可标为未测量，也不错误归因。
+                continue
+            start_time, _, tool_call_id = self._tool_starts[best]
+            unmatched.remove(best)
+            executions.append(
+                ToolExecution(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    start_time=start_time,
+                    end_time=end_time,
+                    duration_seconds=duration,
+                )
+            )
+        return sorted(executions, key=lambda execution: execution.start_time)
 
     @staticmethod
     def _parse_json_timestamp(entry: Dict[str, Any]) -> float:
@@ -165,17 +233,19 @@ class LogLoader:
         """
         o = group_offset
         event = match.group(1 + o)
-        session_id = match.group(2 + o)
-        request_id = match.group(3 + o)
-        iteration = int(match.group(4 + o))
-        model_name = match.group(5 + o)
-        body_part_str = match.group(6 + o)
-        reasoning_seq_str = match.group(7 + o)
-        body_str = match.group(8 + o)
+        event_id = match.group(2 + o) or ""
+        session_id = match.group(3 + o)
+        request_id = match.group(4 + o)
+        iteration = int(match.group(5 + o))
+        model_name = match.group(6 + o)
+        body_part_str = match.group(7 + o)
+        reasoning_seq_str = match.group(8 + o)
+        body_str = match.group(9 + o)
 
         return {
             "timestamp": timestamp,
             "event": event,
+            "event_id": event_id,
             "session_id": session_id,
             "request_id": request_id,
             "iteration": iteration,

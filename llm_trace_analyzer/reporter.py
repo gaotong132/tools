@@ -5,7 +5,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .models import (
     AnalysisResult,
@@ -50,7 +50,7 @@ class HTMLReporter:
         self._id_counter = 0
         self._global_tool_name_map: Dict[str, str] = {}
         self._timing_map: Dict[int, Dict] = {}
-        self._global_num_map: Dict[Tuple[str, int], int] = {}
+        self._global_num_map: Dict[Tuple[str, Any], int] = {}
         self._children_by_session: Dict[str, List] = {}
 
     def generate(self, result: AnalysisResult, output_path: str) -> None:
@@ -243,12 +243,41 @@ class HTMLReporter:
         non_zero_starts = [
             t.request_timestamp for t in chain.iteration_timings if t.request_timestamp > 0
         ]
-        non_zero_ends = [
-            t.response_timestamp for t in chain.iteration_timings if t.response_timestamp > 0
-        ]
+        non_zero_ends = []
+        for timing in chain.iteration_timings:
+            if timing.response_timestamp > 0:
+                non_zero_ends.append(timing.response_timestamp)
+            non_zero_ends.extend(
+                execution.end_time for execution in timing.tool_executions if execution.end_time > 0
+            )
         session_start = min(non_zero_starts) if non_zero_starts else chain.start_time
         session_end = max(non_zero_ends) if non_zero_ends else chain.end_time
         total_span = max(session_end - session_start, 0.001)
+
+        delegated_tools = {"spawn_subagent", "fork_agent", "spawn_fork_agent"}
+
+        def actual_tool_executions(timing):
+            return [
+                execution
+                for execution in timing.tool_executions
+                if execution.tool_name not in delegated_tools
+            ]
+
+        def timing_end(timing):
+            return max(
+                [timing.response_timestamp]
+                + [execution.end_time for execution in actual_tool_executions(timing)]
+            )
+
+        def absolute_segment(start, end, outer_start, outer_span, css_class):
+            if start <= 0 or end <= start:
+                return ""
+            left = max((start - outer_start) / outer_span * 100, 0.0)
+            width = max((end - start) / outer_span * 100, 0.15)
+            return (
+                f'<div class="gantt-seg {css_class}" '
+                f'style="left:{left:.2f}%;width:{width:.2f}%"></div>'
+            )
 
         # 按 session_id 分组 timings
         timings_by_session: Dict[str, List] = {}
@@ -396,11 +425,7 @@ class HTMLReporter:
                 valid_starts = [
                     t.request_timestamp for t in agent_timings if t.request_timestamp > 0
                 ]
-                valid_ends = [
-                    t.response_timestamp + (t.tool_processing_duration or 0)
-                    for t in agent_timings
-                    if t.response_timestamp > 0
-                ]
+                valid_ends = [timing_end(t) for t in agent_timings if timing_end(t) > 0]
                 if valid_starts and valid_ends:
                     a_start = min(valid_starts)
                     a_end = max(valid_ends)
@@ -408,17 +433,30 @@ class HTMLReporter:
                     bar_left = max(((a_start - session_start) / total_span) * 100, 0)
                     bar_width = max(((a_end - a_start) / total_span) * 100, 0.5)
 
-                    # 构建 LLM + Tool 段
+                    # 按绝对时间定位，正确呈现并发/重叠，不再顺序拼接色块。
                     segments: List[str] = []
                     for t in agent_timings:
-                        llm_w = max((t.llm_call_duration / a_span) * 100, 0.3)
-                        segments.append(
-                            f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.2f}%"></div>'
+                        llm_class = (
+                            "gantt-seg-internal" if t.call_kind != "agent" else "gantt-seg-llm"
                         )
-                        if t.tool_processing_duration > 0:
-                            tool_w = max((t.tool_processing_duration / a_span) * 100, 0.8)
+                        segments.append(
+                            absolute_segment(
+                                t.request_timestamp,
+                                t.response_timestamp,
+                                a_start,
+                                a_span,
+                                llm_class,
+                            )
+                        )
+                        for execution in actual_tool_executions(t):
                             segments.append(
-                                f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.2f}%"></div>'
+                                absolute_segment(
+                                    execution.start_time,
+                                    execution.end_time,
+                                    a_start,
+                                    a_span,
+                                    "gantt-seg-tool",
+                                )
                             )
 
                     agent_resps = [r for r in chain.responses if r.session_id == lookup_sid]
@@ -442,9 +480,12 @@ class HTMLReporter:
             # === 展开内容：逐 iteration 细节行 ===
             # 构建该 agent 的 response 查找表（按 response_timestamp 匹配）
             resp_lookup: Dict[float, LLMResponse] = {}
+            resp_event_lookup: Dict[str, LLMResponse] = {}
             for r in chain.responses:
                 if r.session_id == lookup_sid:
                     resp_lookup[round(r.timestamp, 3)] = r
+                    if r.event_id:
+                        resp_event_lookup[r.event_id] = r
 
             detail_rows: List[str] = []
             for local_idx, timing in enumerate(agent_timings):
@@ -452,8 +493,7 @@ class HTMLReporter:
 
                 iter_start = timing.request_timestamp
                 iter_end = timing.response_timestamp
-                tool_end = iter_end + (timing.tool_processing_duration or 0)
-                bar_end = max(tool_end, iter_end)
+                bar_end = timing_end(timing)
                 iter_span = max(bar_end - iter_start, 0.001)
 
                 # 处理 timestamp=0 的情况
@@ -464,19 +504,34 @@ class HTMLReporter:
                     i_left = max(((iter_start - session_start) / total_span) * 100, 0)
                     i_width = max(((bar_end - iter_start) / total_span) * 100, 0.3)
 
-                llm_w = max((timing.llm_call_duration / iter_span) * 100, 0.5)
-                segs = [f'<div class="gantt-seg gantt-seg-llm" style="width:{llm_w:.1f}%"></div>']
-                if timing.tool_processing_duration > 0:
-                    tool_w = max((timing.tool_processing_duration / iter_span) * 100, 0.8)
+                llm_class = "gantt-seg-internal" if timing.call_kind != "agent" else "gantt-seg-llm"
+                segs = [absolute_segment(iter_start, iter_end, iter_start, iter_span, llm_class)]
+                for execution in actual_tool_executions(timing):
                     segs.append(
-                        f'<div class="gantt-seg gantt-seg-tool" style="width:{tool_w:.1f}%"></div>'
+                        absolute_segment(
+                            execution.start_time,
+                            execution.end_time,
+                            iter_start,
+                            iter_span,
+                            "gantt-seg-tool",
+                        )
                     )
 
                 # 构建标签：#N + tool calls + content 摘要
                 label_text = f"#{local_num}"
+                kind_labels = {
+                    "session_memory": "Memory",
+                    "context_summary": "Summary",
+                    "context_compaction": "Compaction",
+                    "framework_internal": "Internal",
+                }
+                if timing.call_kind in kind_labels:
+                    label_text += f"  [{kind_labels[timing.call_kind]}]"
                 full_content = ""
                 full_tool_calls = ""
-                resp = resp_lookup.get(round(timing.response_timestamp, 3))
+                resp = resp_event_lookup.get(timing.event_id) or resp_lookup.get(
+                    round(timing.response_timestamp, 3)
+                )
                 if resp:
                     # Tool call 名称
                     if resp.tool_calls:
@@ -518,6 +573,7 @@ class HTMLReporter:
                     "llm": self._format_duration(timing.llm_call_duration),
                     "tool": self._format_duration(timing.tool_processing_duration),
                     "total": self._format_duration(iter_total),
+                    "wall": self._format_duration(bar_end - iter_start),
                     "llm-pct": f"{llm_pct:.1f}",
                     "tool-pct": f"{tool_pct:.1f}",
                     "time-range": f"{self._format_timestamp(iter_start)} - {self._format_timestamp(bar_end)}",
@@ -607,9 +663,18 @@ class HTMLReporter:
         llm_pct = (llm / total * 100) if total > 0 else 0
         tool_pct = (tool / total * 100) if total > 0 else 0
         if not start_ts and timings:
-            start_ts = timings[0].request_timestamp
+            start_ts = min(t.request_timestamp for t in timings if t.request_timestamp > 0)
         if not end_ts and timings:
-            end_ts = max(t.response_timestamp for t in timings)
+            delegated = {"spawn_subagent", "fork_agent", "spawn_fork_agent"}
+            end_ts = max(
+                [t.response_timestamp for t in timings]
+                + [
+                    execution.end_time
+                    for t in timings
+                    for execution in t.tool_executions
+                    if execution.tool_name not in delegated
+                ]
+            )
 
         # 计算字数统计
         reasoning_chars = 0
@@ -636,6 +701,7 @@ class HTMLReporter:
             "llm": self._format_duration(llm),
             "tool": self._format_duration(tool),
             "total": self._format_duration(total),
+            "wall": self._format_duration(max(end_ts - start_ts, 0.0)),
             "llm-pct": f"{llm_pct:.1f}",
             "tool-pct": f"{tool_pct:.1f}",
             "time-range": f"{self._format_timestamp(start_ts)} - {self._format_timestamp(end_ts)}",
@@ -835,7 +901,11 @@ class HTMLReporter:
             req = item["request"]
             resp = item["response"]
 
-            key = (req.session_id, req.iteration) if req else (resp.session_id, resp.iteration)
+            pair_item = req or resp
+            key = (
+                pair_item.session_id,
+                pair_item.event_id or pair_item.iteration,
+            )
             global_num = self._global_num_map.get(key, 0)
 
             timing_info = self._timing_map.get(global_num, {})
@@ -1355,12 +1425,10 @@ class HTMLReporter:
 
         # 工具调用次数 + 失败次数折线（SVG）
         tool_counts_list = [
-            iter_info.get((t.session_id, t.iteration_num), (0, 0))[0]
-            for t in sorted_timings
+            iter_info.get((t.session_id, t.iteration_num), (0, 0))[0] for t in sorted_timings
         ]
         fail_counts_list = [
-            iter_info.get((t.session_id, t.iteration_num), (0, 0))[1]
-            for t in sorted_timings
+            iter_info.get((t.session_id, t.iteration_num), (0, 0))[1] for t in sorted_timings
         ]
         max_tc = max(tool_counts_list) if tool_counts_list else 0
         max_fc = max(fail_counts_list) if fail_counts_list else 0
@@ -1629,32 +1697,24 @@ class HTMLReporter:
     def _compute_per_tool_stats(
         self, chains: List[LLMChain], failure_counts: Optional[Dict[str, int]] = None
     ) -> Dict[str, Dict]:
-        """计算每个工具的调用次数、总耗时、平均耗时、失败次数。
-
-        将每次迭代的 tool_processing_duration 均分给该迭代的所有工具调用。
-        通过 (session_id, response_timestamp) 匹配 timing 与 response。
-        failure_counts: {tool_name: fail_count} 来自 analyzer 的失败检测。
-        """
+        """用 TelemetryRail 实测值计算每个工具的次数、耗时和失败次数。"""
         per_tool: Dict[str, Dict] = {}
         for chain in chains:
-            timing_map: Dict[tuple, float] = {}
+            execution_by_id = {}
             for t in chain.iteration_timings:
-                if t.response_timestamp > 0:
-                    timing_map[(t.session_id, round(t.response_timestamp, 3))] = (
-                        t.tool_processing_duration
-                    )
+                for execution in t.tool_executions:
+                    execution_by_id[execution.tool_call_id] = execution
             for resp in chain.responses:
                 if not resp.tool_calls:
                     continue
-                n = len(resp.tool_calls)
-                duration = timing_map.get((resp.session_id, round(resp.timestamp, 3)), 0)
-                per_call = duration / n if n > 0 else 0
                 for tc in resp.tool_calls:
                     name = self._extract_tool_name(tc) or "unknown"
                     if name not in per_tool:
                         per_tool[name] = {"count": 0, "total_time": 0.0}
                     per_tool[name]["count"] += 1
-                    per_tool[name]["total_time"] += per_call
+                    measured_execution = execution_by_id.get(tc.get("id", ""))
+                    if measured_execution:
+                        per_tool[name]["total_time"] += measured_execution.duration_seconds
         for v in per_tool.values():
             v["avg_time"] = v["total_time"] / v["count"] if v["count"] > 0 else 0
         # 合并失败计数

@@ -11,6 +11,7 @@ from .models import (
     Statistics,
     SubagentInfo,
     SystemMetrics,
+    ToolExecution,
     pair_requests_responses,
 )
 from .tool_errors import detect_tool_failure
@@ -22,10 +23,15 @@ class ChainAnalyzer:
         requests: Dict[str, List[LLMRequest]],
         responses: Dict[str, List[LLMResponse]],
         system_metrics: Optional[Dict[Tuple[str, int], List[SystemMetrics]]] = None,
+        tool_executions: Optional[List[ToolExecution]] = None,
     ):
         self.requests = requests
         self.responses = responses
         self.system_metrics = system_metrics or {}
+        self.tool_executions = tool_executions or []
+        self._tool_execution_by_id = {
+            execution.tool_call_id: execution for execution in self.tool_executions
+        }
         self._all_sessions = set(requests.keys()) | set(responses.keys())
         self._parent_to_task_ids: Dict[str, List[Tuple[str, float]]] = {}
         self._task_id_to_parent: Dict[str, str] = {}
@@ -243,7 +249,7 @@ class ChainAnalyzer:
         """计算每个迭代的时间统计"""
         timings: List[IterationTiming] = []
 
-        # 按 (session_id, iteration) 配对
+        # 新日志按 event_id 配对；旧日志回退 (session_id, iteration)。
         sorted_items = pair_requests_responses(requests, responses)
 
         for i, item in enumerate(sorted_items):
@@ -258,6 +264,8 @@ class ChainAnalyzer:
                 session_id=req.session_id if req else (resp.session_id if resp else ""),
                 request_timestamp=req.timestamp if req else 0,
                 response_timestamp=resp.timestamp if resp else 0,
+                event_id=(req.event_id if req else (resp.event_id if resp else "")),
+                call_kind=(req.call_kind if req else (resp.call_kind if resp else "agent")),
             )
 
             # 添加系统资源指标
@@ -268,29 +276,23 @@ class ChainAnalyzer:
 
             # 计算 llm_call_duration
             if req and resp:
-                timing.llm_call_duration = resp.timestamp - req.timestamp
+                timing.llm_call_duration = max(resp.timestamp - req.timestamp, 0.0)
 
-            # 计算 tool_processing_duration（查找下一个同 session 的请求）
-            if resp and i < len(sorted_items) - 1:
-                # 找下一个同 session 的请求（跳过其他 session 的交错请求）
-                for j in range(i + 1, len(sorted_items)):
-                    next_item = sorted_items[j]
-                    next_req = next_item["request"]
-                    if next_req and next_req.session_id == timing.session_id:
-                        gap = next_req.timestamp - resp.timestamp
-                        # 如果 response 包含 spawn_subagent，排除 subAgent 运行时间
-                        if self._has_spawn_subagent(resp):
-                            # 只计算框架处理时间（response 到 subAgent 启动）
-                            spawn_overhead = self._get_spawn_overhead(
-                                resp.timestamp, timing.session_id
-                            )
-                            timing.tool_processing_duration = min(spawn_overhead, gap)
-                        else:
-                            timing.tool_processing_duration = gap
-                        break
+            # 工具耗时只使用 TelemetryRail 的真实生命周期，不再把模型调用间隙推断为工具。
+            if resp:
+                delegated_names = {"spawn_subagent", "fork_agent", "spawn_fork_agent"}
+                for tool_call in resp.tool_calls:
+                    tool_call_id = tool_call.get("id", "")
+                    execution = self._tool_execution_by_id.get(tool_call_id)
+                    if execution:
+                        timing.tool_executions.append(execution)
+                        if execution.tool_name not in delegated_names:
+                            timing.tool_processing_duration += execution.duration_seconds
 
-            # 判断是否为最后一次迭代
-            timing.is_last_iteration = timing.tool_processing_duration == 0
+            timing.is_last_iteration = not any(
+                later["request"] and later["request"].session_id == timing.session_id
+                for later in sorted_items[i + 1 :]
+            )
 
             timings.append(timing)
 
